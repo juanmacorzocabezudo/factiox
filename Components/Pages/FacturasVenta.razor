@@ -1,0 +1,3068 @@
+@page "/facturas-venta"
+@using FactioX.Models
+@using FactioX.Services
+@using System.IO
+@inject IFacturaService FacturaService
+@inject IClienteService ClienteService
+@inject IProductoService ProductoService
+@inject ISEPAService SEPAService
+@inject IFacturaEService FacturaEService
+@inject IFirmaDigitalService FirmaDigitalService
+@inject IConfiguracionEmpresaService ConfiguracionEmpresaService
+@inject IFacturaPdfService FacturaPdfService
+@inject IEmailService EmailService
+@inject ITenantService TenantService
+@inject IFormaPagoPersonalizadaService FormaPagoService
+@inject IAuthService AuthService
+@inject IExcelExportService ExcelExportService
+@inject IEmpresaService EmpresaService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Facturas de Venta - FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="mb-3 d-flex justify-content-between align-items-center">
+        <h2><i class="bi bi-receipt"></i> Facturas de Venta</h2>
+        <div>
+            @if (AuthService.Rol == Roles.Asesoria)
+            {
+                <button class="btn btn-success" @onclick="ExportarAExcel" disabled="@(facturas == null || !FacturasFiltradas.Any())">
+                    <i class="bi bi-file-earmark-excel"></i> Exportar a Excel
+                </button>
+            }
+            else
+            {
+                <button class="btn" style="background-color: #28a745; color: white;" @onclick="NuevaFactura">
+                    <i class="bi bi-plus-circle"></i> Nueva Factura de Venta
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <input type="text" class="form-control" placeholder="Buscar por número o cliente..." @bind="busqueda" @bind:event="oninput" />
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select" @bind="filtroEstado">
+                        <option value="">Todos los estados</option>
+                        <option value="Borrador">Borrador</option>
+                        <option value="Emitida">Emitida</option>
+                        <option value="Enviada">Enviada</option>
+                        <option value="Pagada">Pagada</option>
+                        <option value="Vencida">Vencida</option>
+                        <option value="Cancelada">Cancelada</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <input type="date" class="form-control" @bind="filtroFechaDesde" placeholder="Fecha desde" />
+                </div>
+                <div class="col-md-3">
+                    <input type="date" class="form-control" @bind="filtroFechaHasta" placeholder="Fecha hasta" />
+                </div>
+            </div>
+            @if (AuthService.Rol == Roles.Asesoria)
+            {
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <label class="form-label"><strong>Filtrar por empresas:</strong></label>
+                        <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto; background-color: #f8f9fa;">
+                            @if (empresasAsociadas != null && empresasAsociadas.Any())
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           checked="@(filtroEmpresaIds.Count == 0)" 
+                                           @onchange="@((ChangeEventArgs e) => ToggleTodasEmpresas((bool)e.Value!))" />
+                                    <label class="form-check-label fw-bold">
+                                        Todas las empresas
+                                    </label>
+                                </div>
+                                <hr class="my-2" />
+                                @foreach (var empresa in empresasAsociadas.OrderBy(e => e.NombreComercial))
+                                {
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               checked="@filtroEmpresaIds.Contains(empresa.Id)" 
+                                               @onchange="@((ChangeEventArgs e) => ToggleFiltroEmpresa(empresa.Id, (bool)e.Value!))" />
+                                        <label class="form-check-label">
+                                            @empresa.NombreComercial
+                                        </label>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <p class="text-muted mb-0">No hay empresas asociadas</p>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (facturas == null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (!facturas.Any())
+    {
+        <div class="alert" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+            <i class="bi bi-info-circle"></i> No hay facturas de venta registradas.
+        </div>
+    }
+    else
+    {
+        <!-- Tabla de facturas -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Lista de Facturas</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Número</th>
+                                @if (AuthService.Rol == Roles.Asesoria)
+                                {
+                                    <th>Empresa</th>
+                                }
+                                <th>Cliente</th>
+                                <th>Fecha Emisión</th>
+                                <th>Vencimiento</th>
+                                <th class="text-end">Base</th>
+                                <th class="text-end">IVA</th>
+                                <th class="text-end">Total</th>
+                                @if (AuthService.Rol != Roles.Asesoria)
+                                {
+                                    <th class="text-end">Pagado</th>
+                                    <th class="text-end">Pendiente</th>
+                                    <th>Estado</th>
+                                }
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var factura in FacturasFiltradas)
+                            {
+                                <tr class="@(factura.Estado == EstadoFactura.Vencida ? "table-warning" : "")" 
+                                    @ondblclick="@(() => AbrirFactura(factura.Id))" 
+                                    style="cursor: pointer;">
+                                    <td><strong>@factura.NumeroFactura</strong></td>
+                                    @if (AuthService.Rol == Roles.Asesoria)
+                                    {
+                                        <td><span class="badge bg-secondary">@factura.Empresa?.NombreComercial</span></td>
+                                    }
+                                    <td>
+                                        @if (factura.Cliente != null)
+                                        {
+                                            if (factura.Cliente.Tipo == TipoCliente.Empresa)
+                                            {
+                                                @factura.Cliente.NombreEmpresa
+                                            }
+                                            else
+                                            {
+                                                @($"{factura.Cliente.Nombre} {factura.Cliente.Apellidos}".Trim())
+                                            }
+                                        }
+                                    </td>
+                                    <td>@factura.FechaEmision.ToString("dd/MM/yyyy")</td>
+                                    <td>@(factura.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "-")</td>
+                                    <td class="text-end">@factura.BaseImponible.ToString("C2")</td>
+                                    <td class="text-end">@factura.ImporteIVA.ToString("C2")</td>
+                                    <td class="text-end"><strong>@factura.Total.ToString("C2")</strong></td>
+                                    @if (AuthService.Rol != Roles.Asesoria)
+                                    {
+                                        <td class="text-end">
+                                            @if (factura.TotalPagado > 0)
+                                            {
+                                                <span class="text-success"><strong>@factura.TotalPagado.ToString("C2")</strong></span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">@factura.TotalPagado.ToString("C2")</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (factura.PendientePago > 0)
+                                            {
+                                                <span class="@(factura.PendientePago == factura.Total ? "text-danger" : "text-warning")">
+                                                    <strong>@factura.PendientePago.ToString("C2")</strong>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">@factura.PendientePago.ToString("C2")</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="badge @ObtenerClaseEstado(factura.Estado)" style="@ObtenerEstiloEstado(factura.Estado)">
+                                                @factura.Estado
+                                            </span>
+                                            @if (factura.TienePagosParciales)
+                                            {
+                                                <br /><span class="badge mt-1" style="background-color: #5cb85c; color: white;">Pago Parcial</span>
+                                            }
+                                        </td>
+                                    }
+                                    <td>
+                                        @if (AuthService.Rol != Roles.Asesoria)
+                                        {
+                                            @if (factura.PendientePago > 0)
+                                            {
+                                                <button class="btn btn-sm btn-outline-success me-1" @onclick="() => GestionarPagos(factura.Id)" title="Gestionar Pagos">
+                                                    <i class="bi bi-cash-coin"></i>
+                                                </button>
+                                            }
+                                            @if (!string.IsNullOrEmpty(factura.DocumentoAdjunto))
+                                            {
+                                                <button class="btn btn-sm btn-outline-success me-1" @onclick="() => DescargarDocumentoListado(factura)" title="Descargar Documento">
+                                                    <i class="bi bi-file-earmark-arrow-down-fill"></i>
+                                                </button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-success me-1" @onclick="() => EnviarPorEmail(factura)" title="Enviar por Email">
+                                                <i class="bi bi-envelope-fill"></i>
+                                            </button>
+                                            <button class="btn btn-sm me-1" style="color: #5cb85c; border-color: #5cb85c;" @onclick="() => Imprimir(factura)" title="Imprimir">
+                                                <i class="bi bi-printer-fill"></i>
+                                            </button>
+                                            <button class="btn btn-sm me-1" style="color: #28a745; border-color: #28a745;" @onclick="() => ExportarFacturaE(factura)" title="Exportar FacturaE XML">
+                                                <i class="bi bi-file-earmark-code"></i>
+                                            </button>
+                                            <button class="btn btn-sm me-1" style="color: #1e7e34; border-color: #1e7e34;" @onclick="() => EditarFactura(factura.Id)" title="Editar">
+                                                <i class="bi bi-pencil-fill"></i>
+                                            </button>
+                                            <button class="btn btn-sm" style="color: #155724; border-color: #155724;" @onclick="() => EliminarFactura(factura.Id)" title="Eliminar">
+                                                <i class="bi bi-trash-fill"></i>
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            @* Acciones para Asesoría *@
+                                            <button class="btn btn-sm me-1" style="color: #28a745; border-color: #28a745;" @onclick="@(() => AbrirFactura(factura.Id))" title="Ver Factura">
+                                                <i class="bi bi-eye-fill"></i>
+                                            </button>
+                                            <button class="btn btn-sm me-1" style="color: #5cb85c; border-color: #5cb85c;" @onclick="() => Imprimir(factura)" title="Imprimir">
+                                                <i class="bi bi-printer-fill"></i>
+                                            </button>
+                                            @if (!string.IsNullOrEmpty(factura.DocumentoAdjunto))
+                                            {
+                                                <button class="btn btn-sm btn-outline-success" @onclick="() => DescargarDocumentoListado(factura)" title="Descargar Documento">
+                                                    <i class="bi bi-file-earmark-arrow-down-fill"></i>
+                                                </button>
+                                            }
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estadísticas -->
+        <div class="mt-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5><i class="bi bi-bar-chart-fill"></i> Estadísticas</h5>
+            </div>
+
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card" style="background-color: #1e7e34; color: white;">
+                        <div class="card-body">
+                            <h6>Total Facturado</h6>
+                            <h3>@facturas.Sum(f => f.Total).ToString("C2")</h3>
+                            <small>@facturas.Count facturas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h6>Cobradas</h6>
+                            <h3>@facturas.Where(f => f.Estado == EstadoFactura.Pagada).Sum(f => f.Total).ToString("C2")</h3>
+                            <small>@facturas.Count(f => f.Estado == EstadoFactura.Pagada) facturas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card" style="background-color: #a8d5ba; color: #155724;">
+                        <div class="card-body">
+                            <h6>Pendientes</h6>
+                            <h3>@facturas.Where(f => f.Estado == EstadoFactura.Emitida || f.Estado == EstadoFactura.Enviada).Sum(f => f.Total).ToString("C2")</h3>
+                            <small>@facturas.Count(f => f.Estado == EstadoFactura.Emitida || f.Estado == EstadoFactura.Enviada) facturas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card" style="background-color: #155724; color: white;">
+                        <div class="card-body">
+                            <h6>Vencidas</h6>
+                            <h3>@facturas.Where(f => f.Estado == EstadoFactura.Vencida).Sum(f => f.Total).ToString("C2")</h3>
+                            <small>@facturas.Count(f => f.Estado == EstadoFactura.Vencida) facturas</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráficos -->
+            <div class="row mt-4">
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="bi bi-bar-chart"></i> Facturas por Estado</h6>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="chartFacturasPorEstado" style="max-height: 300px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="bi bi-pie-chart"></i> Distribución de Importes</h6>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="chartDistribucionImportes" style="max-height: 300px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Modal para Nueva/Editar Factura -->
+@if (mostrarModal)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #28a745; color: white;">
+                    <h5 class="modal-title">
+                        @if (AuthService.Rol == Roles.Asesoria)
+                        {
+                            <text>Ver Factura de Venta</text>
+                        }
+                        else
+                        {
+                            <text>@(facturaEditando?.Id > 0 ? "Editar" : "Nueva") Factura de Venta</text>
+                        }
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@facturaEditando" OnValidSubmit="GuardarFactura">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="card mb-3">
+                                    <div class="card-header">
+                                        <h5>Datos de la Factura</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-12 mb-3">
+                                                <label for="cliente" class="form-label">Cliente *</label>
+                                                <div class="input-group">
+                                                    <select id="cliente" class="form-select" value="@facturaEditando.ClienteId" @onchange="@((ChangeEventArgs e) => OnClienteChangedAsync(int.Parse(e.Value?.ToString() ?? "0")))" disabled="@(AuthService.Rol == Roles.Asesoria)">
+                                                        <option value="0">Seleccione un cliente...</option>
+                                                        @if (clientes != null && clientes.Any())
+                                                        {
+                                                            @foreach (var cliente in clientes)
+                                                            {
+                                                                var nombreCliente = cliente.Tipo == TipoCliente.Particular 
+                                                                    ? $"{cliente.Nombre} {cliente.Apellidos}".Trim()
+                                                                    : cliente.NombreEmpresa;
+                                                                <option value="@cliente.Id">@nombreCliente</option>
+                                                            }
+                                                        }
+                                                    </select>
+                                                    @if (AuthService.Rol != Roles.Asesoria)
+                                                    {
+                                                        @if (facturaEditando.ClienteId > 0)
+                                                        {
+                                                            <button type="button" class="btn btn-outline-primary" @onclick="VerCliente" title="Ver/Editar cliente">
+                                                                <i class="bi bi-person-vcard"></i>
+                                                            </button>
+                                                        }
+                                                        <button type="button" class="btn btn-outline-success" @onclick="CrearCliente" title="Crear nuevo cliente">
+                                                            <i class="bi bi-person-plus"></i>
+                                                        </button>
+                                                    }
+                                                </div>
+                                                @if (clientes == null || !clientes.Any())
+                                                {
+                                                    <small style="color: #7cb342;">
+                                                        <i class="bi bi-exclamation-triangle"></i> No hay clientes disponibles. <a href="/clientes" style="color: #1e7e34;">Crear cliente</a>
+                                                    </small>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-3 mb-3">
+                                                <label for="fecha" class="form-label">Fecha Emisión *</label>
+                                                <InputDate id="fecha" class="form-control" @bind-Value="facturaEditando.FechaEmision" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label for="fechaVencimiento" class="form-label">Fecha Vencimiento</label>
+                                                <InputDate id="fechaVencimiento" class="form-control" @bind-Value="facturaEditando.FechaVencimiento" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label for="fechaOperacion" class="form-label">Fecha Operación</label>
+                                                <InputDate id="fechaOperacion" class="form-control" @bind-Value="facturaEditando.FechaOperacion" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                <small class="text-muted">Fecha real del servicio</small>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label for="estado" class="form-label">Estado</label>
+                                                <InputSelect id="estado" class="form-select" @bind-Value="facturaEditando.Estado" disabled="@(AuthService.Rol == Roles.Asesoria)">
+                                                    @foreach (EstadoFactura estado in Enum.GetValues(typeof(EstadoFactura)))
+                                                    {
+                                                        <option value="@estado">@estado</option>
+                                                    }
+                                                </InputSelect>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-3 mb-3">
+                                                <label for="formaPago" class="form-label">Forma de Pago</label>
+                                                <InputSelect id="formaPago" class="form-control" @bind-Value="facturaEditando.FormaPago" disabled="@(AuthService.Rol == Roles.Asesoria)">
+                                                    <option value="">Seleccione...</option>
+                                                    @foreach (var forma in Enum.GetValues<FormaPago>())
+                                                    {
+                                                        <option value="@forma">@ObtenerNombreFormaPago(forma)</option>
+                                                    }
+                                                </InputSelect>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label for="periodoInicio" class="form-label">Período Inicio</label>
+                                                <InputDate id="periodoInicio" class="form-control" @bind-Value="facturaEditando.FechaPeriodoInicio" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                <small class="text-muted">Para servicios periódicos</small>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label for="periodoFin" class="form-label">Período Fin</label>
+                                                <InputDate id="periodoFin" class="form-control" @bind-Value="facturaEditando.FechaPeriodoFin" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                <small class="text-muted">Para servicios periódicos</small>
+                                            </div>
+                                            @if (facturaEditando.Estado == EstadoFactura.Pagada)
+                                            {
+                                                <div class="col-md-3 mb-3">
+                                                    <label for="fechaPago" class="form-label">Fecha de Pago</label>
+                                                    <InputDate id="fechaPago" class="form-control" @bind-Value="facturaEditando.FechaPago" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                </div>
+                                            }
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-12 mb-3">
+                                                <label for="concepto" class="form-label">Concepto</label>
+                                                <textarea id="concepto" class="form-control" rows="2" @bind="facturaEditando.Concepto" placeholder="Descripción del servicio facturado" disabled="@(AuthService.Rol == Roles.Asesoria)"></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5>Líneas de la Factura</h5>
+                                        @if (AuthService.Rol != Roles.Asesoria)
+                                        {
+                                            <button type="button" class="btn btn-sm" style="background-color: #28a745; color: white;" @onclick="AgregarLinea">
+                                                <i class="bi bi-plus"></i> Agregar Línea
+                                            </button>
+                                        }
+                                    </div>
+                                    <div class="card-body">
+                                        @if (facturaEditando.Lineas.Any())
+                                        {
+                                            <div class="table-responsive">
+                                                <table class="table table-sm">
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="width: 30%">Producto/Servicio</th>
+                                                            <th style="width: 20%">Descripción</th>
+                                                            <th style="width: 10%" class="text-end">Cant.</th>
+                                                            <th style="width: 12%" class="text-end">Precio</th>
+                                                            <th style="width: 10%" class="text-end">Desc. %</th>
+                                                            <th style="width: 10%" class="text-end">IVA %</th>
+                                                            <th style="width: 13%" class="text-end">Total</th>
+                                                            <th style="width: 5%"></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @for (int i = 0; i < facturaEditando.Lineas.Count; i++)
+                                                        {
+                                                            var index = i;
+                                                            var linea = facturaEditando.Lineas[index];
+                                                            <tr>
+                                                                <td>
+                                                                    <InputSelect class="form-select form-select-sm" Value="@linea.ProductoId" ValueChanged="@((int? value) => CambiarProducto(index, value))" ValueExpression="@(() => linea.ProductoId)" disabled="@(AuthService.Rol == Roles.Asesoria)">
+                                                                        <option value="0">Seleccionar...</option>
+                                                                        @if (productos != null)
+                                                                        {
+                                                                            @foreach (var producto in productos)
+                                                                            {
+                                                                                <option value="@producto.Id">@producto.Nombre</option>
+                                                                            }
+                                                                        }
+                                                                    </InputSelect>
+                                                                </td>
+                                                                <td>
+                                                                    <input type="text" class="form-control form-control-sm" @bind="linea.Descripcion" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                                </td>
+                                                                <td>
+                                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.Cantidad" @bind:after="CalcularTotalModal" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                                </td>
+                                                                <td>
+                                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.PrecioUnitario" @bind:after="CalcularTotalModal" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                                </td>
+                                                                <td>
+                                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.Descuento" @bind:after="CalcularTotalModal" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                                </td>
+                                                                <td>
+                                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.IVA" @bind:after="CalcularTotalModal" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                                </td>
+                                                                <td class="text-end align-middle">
+                                                                    @linea.Total.ToString("C2")
+                                                                </td>
+                                                                <td>
+                                                                    @if (AuthService.Rol != Roles.Asesoria)
+                                                                    {
+                                                                        <button type="button" class="btn btn-sm" style="color: #155724; border-color: #155724;" @onclick="() => EliminarLinea(index)">
+                                                                            <i class="bi bi-trash"></i>
+                                                                        </button>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            @if (productos == null || !productos.Any())
+                                            {
+                                                <div class="alert mt-2 mb-0" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+                                                    <i class="bi bi-exclamation-triangle"></i> No hay productos disponibles. <a href="/productos" style="color: #1e7e34;">Crear producto</a>
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <p class="text-muted">No hay líneas agregadas</p>
+                                        }
+                                    </div>
+                                </div>
+
+                                <!-- Cálculos e Importes -->
+                                <div class="card mb-3">
+                                    <div class="card-header" style="background-color: #1e7e34; color: white;">
+                                        <h5 class="mb-0"><i class="bi bi-calculator"></i> Cálculos e Importes</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Descuentos Generales (€)</label>
+                                                <input type="number" step="0.01" class="form-control" @bind="facturaEditando.DescuentosGenerales" @bind:after="CalcularTotalModal" placeholder="0.00" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                <small class="text-muted">Descuentos sobre el total de la factura</small>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Recargos Generales (€)</label>
+                                                <input type="number" step="0.01" class="form-control" @bind="facturaEditando.RecargosGenerales" @bind:after="CalcularTotalModal" placeholder="0.00" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                <small class="text-muted">Recargos adicionales (ej: recargo de equivalencia)</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Cargos Adicionales (€)</label>
+                                                <input type="number" step="0.01" class="form-control" @bind="facturaEditando.CargosAdicionales" @bind:after="CalcularTotalModal" placeholder="0.00" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                <small class="text-muted">Gastos de envío, gestión, etc.</small>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Concepto de Cargos</label>
+                                                <input type="text" class="form-control" @bind="facturaEditando.ConceptoCargos" placeholder="Ej: Gastos de gestión" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Retención IRPF (%)</label>
+                                                <input type="number" step="0.01" class="form-control" @bind="facturaEditando.PorcentajeRetencion" @bind:after="CalcularTotalModal" placeholder="0.00" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                                <small class="text-muted">Retención aplicable (opcional)</small>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Importe Retención (€)</label>
+                                                <input type="number" step="0.01" class="form-control" value="@facturaEditando.ImporteRetencion.ToString("F2")" readonly style="background-color: #f8f9fa;" />
+                                            </div>
+                                        </div>
+
+                                        <div class="alert mt-3" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;" role="alert">
+                                            <small>
+                                                <strong>Cálculo:</strong> Subtotal - Descuentos + Recargos + IVA + Cargos - Retención = <strong>@facturaEditando.Total.ToString("C2")</strong>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Datos para FacturaE -->
+                                <div class="card mb-3">
+                                    <div class="card-header" style="background-color: #5cb85c; color: white;">
+                                        <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Datos para FacturaE</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Clase de Factura</label>
+                                                <InputSelect class="form-select" @bind-Value="facturaEditando.ClaseFactura" disabled="@(AuthService.Rol == Roles.Asesoria)">
+                                                    @foreach (var clase in Enum.GetValues<ClaseFactura>())
+                                                    {
+                                                        <option value="@clase">@clase</option>
+                                                    }
+                                                </InputSelect>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Tipo de Factura</label>
+                                                <InputSelect class="form-select" @bind-Value="facturaEditando.TipoFactura" disabled="@(AuthService.Rol == Roles.Asesoria)">
+                                                    @foreach (var tipo in Enum.GetValues<TipoFactura>())
+                                                    {
+                                                        <option value="@tipo">@tipo</option>
+                                                    }
+                                                </InputSelect>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Lugar de Expedición</label>
+                                                <input type="text" class="form-control" @bind="facturaEditando.LugarExpedicion" placeholder="Ciudad" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">CP Expedición</label>
+                                                <input type="text" class="form-control" @bind="facturaEditando.CodigoPostalExpedicion" placeholder="28001" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3">
+                                    <div class="card-header">
+                                        <h5>Observaciones</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <label for="notas" class="form-label">Notas / Observaciones</label>
+                                            <InputTextArea id="notas" class="form-control" rows="3" @bind-Value="facturaEditando.Observaciones" placeholder="Observaciones adicionales sobre la factura" disabled="@(AuthService.Rol == Roles.Asesoria)" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3">
+                                    <div class="card-header" style="background-color: #28a745; color: white;">
+                                        <h5 class="mb-0"><i class="bi bi-paperclip"></i> Documento Adjunto</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        @if (!string.IsNullOrEmpty(facturaEditando.DocumentoAdjunto))
+                                        {
+                                            <div class="alert alert-success mb-3" role="alert">
+                                                <i class="bi bi-file-earmark-check-fill"></i> 
+                                                <strong>Documento adjunto:</strong> @facturaEditando.NombreDocumento
+                                                <div class="mt-2">
+                                                    <button type="button" class="btn btn-sm btn-success me-2" @onclick="DescargarDocumento">
+                                                        <i class="bi bi-download"></i> Descargar
+                                                    </button>
+                                                    @if (AuthService.Rol != Roles.Asesoria)
+                                                    {
+                                                        <button type="button" class="btn btn-sm btn-danger" @onclick="EliminarDocumento">
+                                                            <i class="bi bi-trash"></i> Eliminar
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (AuthService.Rol != Roles.Asesoria)
+                                        {
+                                            <div class="mb-3">
+                                                <label class="form-label">Adjuntar Documento (PDF, imágenes, etc.)</label>
+                                                <InputFile class="form-control" OnChange="CargarDocumento" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" />
+                                                <small class="text-muted">Tamaño máximo: 30MB. El archivo se comprimirá automáticamente si es posible.</small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="card sticky-top" style="top: 20px;">
+                                    <div class="card-header bg-success text-white">
+                                        <h5>Resumen</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Subtotal Líneas:</span>
+                                            <strong>@facturaEditando.Subtotal.ToString("C2")</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Descuentos:</span>
+                                            <strong class="text-danger">-@facturaEditando.DescuentosGenerales.ToString("C2")</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Recargos:</span>
+                                            <strong class="text-success">+@facturaEditando.RecargosGenerales.ToString("C2")</strong>
+                                        </div>
+                                        <hr />
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Base Imponible:</span>
+                                            <strong>@facturaEditando.BaseImponible.ToString("C2")</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>IVA:</span>
+                                            <strong>@facturaEditando.TotalIVA.ToString("C2")</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Cargos Adicionales:</span>
+                                            <strong>@facturaEditando.CargosAdicionales.ToString("C2")</strong>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Retención IRPF:</span>
+                                            <strong class="text-danger">-@facturaEditando.ImporteRetencion.ToString("C2")</strong>
+                                        </div>
+                                        <hr />
+                                        <div class="d-flex justify-content-between">
+                                            <strong>Total:</strong>
+                                            <strong class="fs-4 text-success">@facturaEditando.Total.ToString("C2")</strong>
+                                        </div>
+                                        @if (facturaEditando.Id > 0 && AuthService.Rol != Roles.Asesoria)
+                                        {
+                                            <hr />
+                                            <div class="d-flex justify-content-between mb-2">
+                                                <span>Pagado:</span>
+                                                <strong class="text-success">@facturaEditando.TotalPagado.ToString("C2")</strong>
+                                            </div>
+                                            <div class="d-flex justify-content-between">
+                                                <span>Pendiente:</span>
+                                                <strong class="@(facturaEditando.PendientePago > 0 ? "text-danger" : "text-success")">@facturaEditando.PendientePago.ToString("C2")</strong>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="card-footer">
+                                        @if (AuthService.Rol != Roles.Asesoria)
+                                        {
+                                            <button type="submit" class="btn btn-success w-100 mb-2">
+                                                <i class="bi bi-save"></i> Guardar
+                                            </button>
+                                            @if (facturaEditando.Id > 0 && facturaEditando.PendientePago > 0)
+                                            {
+                                                <button type="button" class="btn w-100 mb-2" style="background-color: #28a745; color: white;" @onclick="() => GestionarPagos(facturaEditando.Id)">
+                                                    <i class="bi bi-cash-coin"></i> Gestionar Pagos (@facturaEditando.PendientePago.ToString("C2") pendiente)
+                                                </button>
+                                            }
+                                        }
+                                        
+                                        @if (facturaEditando.Id > 0)
+                                        {
+                                            <hr class="my-2" />
+                                            <div class="d-grid gap-2">
+                                                <button type="button" class="btn" style="color: #1e7e34; border-color: #1e7e34;" @onclick="ImprimirFactura">
+                                                    <i class="bi bi-printer"></i> Imprimir
+                                                </button>
+                                                @if (AuthService.Rol != Roles.Asesoria)
+                                                {
+                                                    <button type="button" class="btn" style="color: #5cb85c; border-color: #5cb85c;" @onclick="EnviarEmail">
+                                                        <i class="bi bi-envelope"></i> Enviar Email
+                                                    </button>
+                                                    <div class="btn-group w-100" role="group">
+                                                        <button type="button" class="btn btn-outline-success" @onclick="ExportarXML">
+                                                            <i class="bi bi-file-earmark-code"></i> Exportar XML
+                                                        </button>
+                                                        <button type="button" class="btn btn-outline-success" @onclick="ExportarXMLFirmado">
+                                                            <i class="bi bi-file-earmark-lock"></i> XML Firmado
+                                                        </button>
+                                                    </div>
+                                                }
+                                            </div>
+                                            <hr class="my-2" />
+                                        }
+                                        
+                                        <button type="button" class="btn btn-secondary w-100" @onclick="CerrarModal">
+                                            <i class="bi bi-x-circle"></i> @(AuthService.Rol == Roles.Asesoria ? "Cerrar" : "Cancelar")
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+<!-- Modal de Visualización Solo Lectura para Asesoría -->
+@if (mostrarModalVer)
+{
+    <div class="modal fade show" style="display: block; z-index: 1056;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #28a745; color: white;">
+                    <h5 class="modal-title">
+                        <i class="bi bi-eye"></i> Ver Factura de Venta @(facturaVisualizacion != null ? $"- {facturaVisualizacion.NumeroFactura}" : "")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalVer"></button>
+                </div>
+                <div class="modal-body">
+                    @if (facturaVisualizacion != null)
+                    {
+                        <div class="row">
+                            <div class="col-md-8">
+                            <!-- Datos del Cliente -->
+                            <div class="card mb-3">
+                                <div class="card-header" style="background-color: #28a745; color: white;">
+                                    <h5 class="mb-0"><i class="bi bi-person-badge"></i> Cliente</h5>
+                                </div>
+                                <div class="card-body">
+                                    @if (facturaVisualizacion.Cliente != null)
+                                    {
+                                        <div class="row">
+                                            <div class="col-md-6 mb-2">
+                                                <strong>Nombre:</strong><br/>
+                                                @if (facturaVisualizacion.Cliente.Tipo == TipoCliente.Particular)
+                                                {
+                                                    <span>@facturaVisualizacion.Cliente.Nombre @facturaVisualizacion.Cliente.Apellidos</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>@facturaVisualizacion.Cliente.NombreEmpresa</span>
+                                                }
+                                            </div>
+                                            <div class="col-md-6 mb-2">
+                                                <strong>NIF:</strong><br/>
+                                                <span>@facturaVisualizacion.Cliente.NIF</span>
+                                            </div>
+                                            <div class="col-md-6 mb-2">
+                                                <strong>Email:</strong><br/>
+                                                <span>@facturaVisualizacion.Cliente.Email</span>
+                                            </div>
+                                            <div class="col-md-6 mb-2">
+                                                <strong>Teléfono:</strong><br/>
+                                                <span>@facturaVisualizacion.Cliente.Telefono</span>
+                                            </div>
+                                            <div class="col-md-12 mb-2">
+                                                <strong>Dirección:</strong><br/>
+                                                <span>@facturaVisualizacion.Cliente.Direccion</span><br/>
+                                                <span>@facturaVisualizacion.Cliente.CodigoPostal @facturaVisualizacion.Cliente.Ciudad</span><br/>
+                                                <span>@facturaVisualizacion.Cliente.Provincia, @facturaVisualizacion.Cliente.Pais</span>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- Datos de la Factura -->
+                            <div class="card mb-3">
+                                <div class="card-header" style="background-color: #5cb85c; color: white;">
+                                    <h5 class="mb-0"><i class="bi bi-file-text"></i> Datos de la Factura</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-3 mb-2">
+                                            <strong>Número:</strong><br/>
+                                            <span>@facturaVisualizacion.NumeroFactura</span>
+                                        </div>
+                                        <div class="col-md-3 mb-2">
+                                            <strong>Fecha Emisión:</strong><br/>
+                                            <span>@facturaVisualizacion.FechaEmision.ToString("dd/MM/yyyy")</span>
+                                        </div>
+                                        <div class="col-md-3 mb-2">
+                                            <strong>Fecha Vencimiento:</strong><br/>
+                                            <span>@(facturaVisualizacion.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "-")</span>
+                                        </div>
+                                        <div class="col-md-3 mb-2">
+                                            <strong>Estado:</strong><br/>
+                                            <span class="badge @ObtenerClaseEstado(facturaVisualizacion.Estado)">@facturaVisualizacion.Estado</span>
+                                        </div>
+                                        @if (facturaVisualizacion.FechaOperacion.HasValue)
+                                        {
+                                            <div class="col-md-3 mb-2">
+                                                <strong>Fecha Operación:</strong><br/>
+                                                <span>@facturaVisualizacion.FechaOperacion?.ToString("dd/MM/yyyy")</span>
+                                            </div>
+                                        }
+                                        @if (facturaVisualizacion.FormaPago.HasValue)
+                                        {
+                                            <div class="col-md-3 mb-2">
+                                                <strong>Forma de Pago:</strong><br/>
+                                                <span>@ObtenerNombreFormaPago(facturaVisualizacion.FormaPago.Value)</span>
+                                            </div>
+                                        }
+                                        @if (facturaVisualizacion.FechaPeriodoInicio.HasValue || facturaVisualizacion.FechaPeriodoFin.HasValue)
+                                        {
+                                            <div class="col-md-6 mb-2">
+                                                <strong>Período:</strong><br/>
+                                                <span>@(facturaVisualizacion.FechaPeriodoInicio?.ToString("dd/MM/yyyy") ?? "-") - @(facturaVisualizacion.FechaPeriodoFin?.ToString("dd/MM/yyyy") ?? "-")</span>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(facturaVisualizacion.Concepto))
+                                        {
+                                            <div class="col-md-12 mb-2">
+                                                <strong>Concepto:</strong><br/>
+                                                <span>@facturaVisualizacion.Concepto</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Líneas de la Factura -->
+                            @if (facturaVisualizacion.Lineas != null && facturaVisualizacion.Lineas.Any())
+                            {
+                                <div class="card mb-3">
+                                    <div class="card-header" style="background-color: #1e7e34; color: white;">
+                                        <h5 class="mb-0"><i class="bi bi-list-ul"></i> Líneas de la Factura</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Descripción</th>
+                                                        <th class="text-end">Cantidad</th>
+                                                        <th class="text-end">Precio</th>
+                                                        <th class="text-end">Desc. %</th>
+                                                        <th class="text-end">IVA %</th>
+                                                        <th class="text-end">Total</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var linea in facturaVisualizacion.Lineas)
+                                                    {
+                                                        <tr>
+                                                            <td>@linea.Descripcion</td>
+                                                            <td class="text-end">@linea.Cantidad</td>
+                                                            <td class="text-end">@linea.PrecioUnitario.ToString("C2")</td>
+                                                            <td class="text-end">@linea.Descuento%</td>
+                                                            <td class="text-end">@linea.IVA%</td>
+                                                            <td class="text-end"><strong>@linea.Total.ToString("C2")</strong></td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            <!-- Observaciones -->
+                            @if (!string.IsNullOrEmpty(facturaVisualizacion.Observaciones))
+                            {
+                                <div class="card mb-3">
+                                    <div class="card-header">
+                                        <h5 class="mb-0"><i class="bi bi-chat-square-text"></i> Observaciones</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <p class="mb-0">@facturaVisualizacion.Observaciones</p>
+                                    </div>
+                                </div>
+                            }
+
+                            <!-- Documento Adjunto -->
+                            @if (!string.IsNullOrEmpty(facturaVisualizacion.DocumentoAdjunto))
+                            {
+                                <div class="card mb-3">
+                                    <div class="card-header" style="background-color: #28a745; color: white;">
+                                        <h5 class="mb-0"><i class="bi bi-paperclip"></i> Documento Adjunto</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="alert alert-success mb-0" role="alert">
+                                            <i class="bi bi-file-earmark-check-fill"></i> 
+                                            <strong>@facturaVisualizacion.NombreDocumento</strong>
+                                            <div class="mt-2">
+                                                <button type="button" class="btn btn-sm btn-success" @onclick="DescargarDocumentoVer">
+                                                    <i class="bi bi-download"></i> Descargar Documento
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Columna de Resumen -->
+                        <div class="col-md-4">
+                            <div class="card sticky-top" style="top: 20px;">
+                                <div class="card-header bg-success text-white">
+                                    <h5 class="mb-0"><i class="bi bi-calculator"></i> Resumen</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Subtotal Líneas:</span>
+                                        <strong>@facturaVisualizacion.Subtotal.ToString("C2")</strong>
+                                    </div>
+                                    @if (facturaVisualizacion.DescuentosGenerales > 0)
+                                    {
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Descuentos:</span>
+                                            <strong class="text-danger">-@facturaVisualizacion.DescuentosGenerales.ToString("C2")</strong>
+                                        </div>
+                                    }
+                                    @if (facturaVisualizacion.RecargosGenerales > 0)
+                                    {
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Recargos:</span>
+                                            <strong class="text-success">+@facturaVisualizacion.RecargosGenerales.ToString("C2")</strong>
+                                        </div>
+                                    }
+                                    <hr />
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Base Imponible:</span>
+                                        <strong>@facturaVisualizacion.BaseImponible.ToString("C2")</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>IVA:</span>
+                                        <strong>@facturaVisualizacion.TotalIVA.ToString("C2")</strong>
+                                    </div>
+                                    @if (facturaVisualizacion.CargosAdicionales > 0)
+                                    {
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Cargos Adicionales:</span>
+                                            <strong>@facturaVisualizacion.CargosAdicionales.ToString("C2")</strong>
+                                        </div>
+                                    }
+                                    @if (facturaVisualizacion.ImporteRetencion > 0)
+                                    {
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span>Retención IRPF:</span>
+                                            <strong class="text-danger">-@facturaVisualizacion.ImporteRetencion.ToString("C2")</strong>
+                                        </div>
+                                    }
+                                    <hr />
+                                    <div class="d-flex justify-content-between">
+                                        <strong class="fs-5">Total:</strong>
+                                        <strong class="fs-4 text-success">@facturaVisualizacion.Total.ToString("C2")</strong>
+                                    </div>
+                                </div>
+                                <div class="card-footer">
+                                    <div class="d-grid gap-2">
+                                        <button type="button" class="btn btn-success" @onclick="ImprimirFacturaVer">
+                                            <i class="bi bi-printer"></i> Imprimir Factura
+                                        </button>
+                                        @if (!string.IsNullOrEmpty(facturaVisualizacion.DocumentoAdjunto))
+                                        {
+                                            <button type="button" class="btn btn-outline-success" @onclick="DescargarDocumentoVer">
+                                                <i class="bi bi-download"></i> Descargar Documento
+                                            </button>
+                                        }
+                                        <hr class="my-2" />
+                                        <button type="button" class="btn btn-secondary" @onclick="CerrarModalVer">
+                                            <i class="bi bi-x-circle"></i> Cerrar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i> Error al cargar la factura.
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show" style="z-index: 1055;"></div>
+}
+
+<!-- Modal para Lista de Pagos -->
+@if (mostrarModalListaPagos)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cash-coin"></i> 
+                        @if (facturaParaPago != null)
+                        {
+                            <span>Pagos de Factura @facturaParaPago.NumeroFactura</span>
+                        }
+                        else if (clienteSeleccionado != null)
+                        {
+                            <span>Pagos de Cliente: @clienteSeleccionado.Nombre</span>
+                        }
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalListaPagos"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Resumen si es desde factura -->
+                    @if (facturaParaPago != null)
+                    {
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <strong>Cliente:</strong><br />
+                                        @facturaParaPago.Cliente?.Nombre
+                                    </div>
+                                    <div class="col-md-3">
+                                        <strong>Total Factura:</strong><br />
+                                        <span class="h5">@facturaParaPago.Total.ToString("C2")</span>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <strong>Total Pagado:</strong><br />
+                                        <span class="text-success h5">@facturaParaPago.TotalPagado.ToString("C2")</span>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <strong>Pendiente:</strong><br />
+                                        <span class="@(facturaParaPago.PendientePago > 0 ? "text-danger" : "text-success") h5">
+                                            @facturaParaPago.PendientePago.ToString("C2")
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Lista de pagos -->
+                    @if (pagosList?.Any() == true)
+                    {
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0"><i class="bi bi-list-check"></i> Historial de Pagos (@pagosList.Count)</h6>
+                                @if (facturaParaPago != null && facturaParaPago.PendientePago > 0)
+                                {
+                                    <button type="button" class="btn btn-sm\" style="background-color: #28a745; color: white;" @onclick="AbrirModalNuevoPago">
+                                        <i class="bi bi-plus-circle"></i> Nuevo Pago
+                                    </button>
+                                }
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha</th>
+                                                @if (clienteSeleccionado != null)
+                                                {
+                                                    <th>Factura</th>
+                                                }
+                                                <th>Forma de Pago</th>
+                                                <th class="text-end">Importe</th>
+                                                <th>Referencia</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var pago in pagosList.OrderByDescending(p => p.FechaPago))
+                                            {
+                                                <tr style="cursor: pointer;" @onclick="() => AbrirDetallePago(pago.Id)">
+                                                    <td>@pago.FechaPago.ToString("dd/MM/yyyy")</td>
+                                                    @if (clienteSeleccionado != null)
+                                                    {
+                                                        <td><strong>@pago.Factura?.NumeroFactura</strong></td>
+                                                    }
+                                                    <td>@pago.FormaPago</td>
+                                                    <td class="text-end"><strong>@pago.Importe.ToString("C2")</strong></td>
+                                                    <td>@pago.Referencia</td>
+                                                    <td @onclick:stopPropagation="true">
+                                                        <button class="btn btn-sm me-1" style="color: #5cb85c; border-color: #5cb85c;" @onclick="() => AbrirDetallePago(pago.Id)" title="Ver Detalle">
+                                                            <i class="bi bi-eye-fill"></i>
+                                                        </button>
+                                                        <button class="btn btn-sm me-1" style="color: #28a745; border-color: #28a745;" @onclick="() => ExportarPagoXML(pago.Id)" title="Exportar XML">
+                                                            <i class="bi bi-file-earmark-code"></i>
+                                                        </button>
+                                                        @if (facturaParaPago != null)
+                                                        {
+                                                            <button class="btn btn-sm" style="color: #155724; border-color: #155724;" @onclick="() => EliminarPago(pago.Id)" title="Eliminar">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot>
+                                            <tr class="table-success">
+                                                <td colspan="@(clienteSeleccionado != null ? "3" : "2")"><strong>Total Pagado:</strong></td>
+                                                <td class="text-end"><strong>@pagosList.Sum(p => p.Importe).ToString("C2")</strong></td>
+                                                <td colspan="2"></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+                            <i class="bi bi-info-circle"></i> No hay pagos registrados.
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalListaPagos">
+                        <i class="bi bi-x-circle"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+<!-- Modal para Detalle de Pago -->
+@if (mostrarModalDetallePago && pagoDetalle != null)
+{
+    <div class="modal fade show" style="display: block; z-index: 1060;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #5cb85c; color: white;">
+                    <h5 class="modal-title">
+                        <i class="bi bi-receipt"></i> Detalle del Pago
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalDetallePago"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-light">
+                                    <strong><i class="bi bi-calendar-event"></i> Información General</strong>
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>Fecha de Pago:</strong> @pagoDetalle.FechaPago.ToString("dd/MM/yyyy")</p>
+                                    <p><strong>Forma de Pago:</strong> <span class="badge bg-success">@pagoDetalle.FormaPago</span></p>
+                                    <p><strong>Importe:</strong> <span class="h4 text-success">@pagoDetalle.Importe.ToString("C2")</span></p>
+                                    <p><strong>Referencia:</strong> @pagoDetalle.Referencia</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-light">
+                                    <strong><i class="bi bi-file-text"></i> Factura Relacionada</strong>
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>Número:</strong> @pagoDetalle.Factura?.NumeroFactura</p>
+                                    <p><strong>Cliente:</strong> @pagoDetalle.Factura?.Cliente?.Nombre</p>
+                                    <p><strong>Total Factura:</strong> @pagoDetalle.Factura?.Total.ToString("C2")</p>
+                                    <p><strong>Estado:</strong> <span class="badge @ObtenerClaseEstado(pagoDetalle.Factura?.Estado ?? EstadoFactura.Borrador)" style="@ObtenerEstiloEstado(pagoDetalle.Factura?.Estado ?? EstadoFactura.Borrador)">@pagoDetalle.Factura?.Estado</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(pagoDetalle.Notas))
+                    {
+                        <div class="card">
+                            <div class="card-header bg-light">
+                                <strong><i class="bi bi-sticky"></i> Notas / Observaciones</strong>
+                            </div>
+                            <div class="card-body">
+                                <p>@pagoDetalle.Notas</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn" style="color: #28a745; border-color: #28a745;" @onclick="() => ExportarPagoXML(pagoDetalle.Id)">
+                        <i class="bi bi-file-earmark-code"></i> Exportar XML
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalDetallePago">
+                        <i class="bi bi-x-circle"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show" style="z-index: 1055;"></div>
+}
+
+<!-- Modal para Nuevo Pago -->
+@if (mostrarModalNuevoPago && facturaParaPago != null)
+{
+    <div class="modal fade show" style="display: block; z-index: 1065;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #28a745; color: white;">
+                    <h5 class="modal-title">
+                        <i class="bi bi-plus-circle"></i> Registrar Nuevo Pago
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalNuevoPago"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+                        <strong>Factura:</strong> @facturaParaPago.NumeroFactura | 
+                        <strong>Pendiente:</strong> @facturaParaPago.PendientePago.ToString("C2")
+                    </div>
+                    
+                    <EditForm Model="@nuevoPago" OnValidSubmit="RegistrarPago">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Fecha de Pago *</label>
+                                <InputDate @bind-Value="nuevoPago.FechaPago" class="form-control" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Importe *</label>
+                                <InputNumber @bind-Value="nuevoPago.Importe" class="form-control" step="0.01" />
+                                <small class="text-muted">Pendiente: @facturaParaPago.PendientePago.ToString("C2")</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Forma de Pago *</label>
+                                <InputSelect @bind-Value="nuevoPago.FormaPago" class="form-select">
+                                    <option value="@FormaPago.Efectivo">Efectivo</option>
+                                    <option value="@FormaPago.Transferencia">Transferencia</option>
+                                    <option value="@FormaPago.TarjetaCredito">Tarjeta Crédito</option>
+                                    <option value="@FormaPago.TarjetaDebito">Tarjeta Débito</option>
+                                    <option value="@FormaPago.Bizum">Bizum</option>
+                                    <option value="@FormaPago.Domiciliacion">Domiciliación</option>
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Referencia</label>
+                                <InputText @bind-Value="nuevoPago.Referencia" class="form-control" placeholder="Nº transferencia, recibo, etc." />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Notas / Observaciones</label>
+                                <InputTextArea @bind-Value="nuevoPago.Notas" class="form-control" rows="3" />
+                            </div>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-circle"></i> Registrar Pago
+                            </button>
+                            <button type="button" class="btn btn-secondary" @onclick="CerrarModalNuevoPago">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show" style="z-index: 1060;"></div>
+}
+
+<!-- Modal de Cliente (Crear/Editar desde Factura) -->
+@if (mostrarModalCliente)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="z-index: 1065;">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">@(clienteEditando.Id > 0 ? "Editar Cliente" : "Nuevo Cliente")</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalCliente"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo de Cliente *</label>
+                            <select class="form-select" @bind="clienteEditando.Tipo">
+                                <option value="@TipoCliente.Particular">Particular</option>
+                                <option value="@TipoCliente.Empresa">Empresa</option>
+                                <option value="@TipoCliente.Agencia">Agencia</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">NIF/CIF *</label>
+                            <input type="text" class="form-control" @bind="clienteEditando.NIF" />
+                        </div>
+                    </div>
+
+                    @if (clienteEditando.Tipo == TipoCliente.Particular)
+                    {
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre *</label>
+                                <input type="text" class="form-control" @bind="clienteEditando.Nombre" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Apellidos</label>
+                                <input type="text" class="form-control" @bind="clienteEditando.Apellidos" />
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre de la Empresa *</label>
+                                <input type="text" class="form-control" @bind="clienteEditando.NombreEmpresa" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Persona de Contacto</label>
+                                <input type="text" class="form-control" @bind="clienteEditando.Nombre" />
+                            </div>
+                        </div>
+                    }
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Dirección</label>
+                            <input type="text" class="form-control" @bind="clienteEditando.Direccion" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Ciudad</label>
+                            <input type="text" class="form-control" @bind="clienteEditando.Ciudad" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Código Postal</label>
+                            <input type="text" class="form-control" @bind="clienteEditando.CodigoPostal" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Provincia</label>
+                            <input type="text" class="form-control" @bind="clienteEditando.Provincia" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Teléfono *</label>
+                            <input type="text" class="form-control" @bind="clienteEditando.Telefono" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email *</label>
+                            <input type="email" class="form-control" @bind="clienteEditando.Email" />
+                            <small class="text-muted">Este email se usará para enviar facturas</small>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email Secundario</label>
+                            <input type="email" class="form-control" @bind="clienteEditando.EmailSecundario" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Forma de Pago</label>
+                            <select class="form-select" @bind="clienteEditando.FormaPago">
+                                <option value="">-- Selecciona --</option>
+                                <option value="@FormaPago.Efectivo">Efectivo</option>
+                                <option value="@FormaPago.Transferencia">Transferencia</option>
+                                <option value="@FormaPago.TarjetaCredito">Tarjeta Crédito</option>
+                                <option value="@FormaPago.TarjetaDebito">Tarjeta Débito</option>
+                                <option value="@FormaPago.Bizum">Bizum</option>
+                                <option value="@FormaPago.Domiciliacion">Domiciliación</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="activoCheck" @bind="clienteEditando.Activo" />
+                        <label class="form-check-label" for="activoCheck">
+                            Cliente activo
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" @onclick="GuardarClienteDesdeModal">
+                        <i class="bi bi-save"></i> Guardar
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalCliente">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show" style="z-index: 1064;"></div>
+}
+
+@code {
+    private List<Factura>? facturas;
+    private List<Cliente>? clientes;
+    private List<Producto>? productos;
+    private List<FormaPagoPersonalizada>? formasPago;
+    private List<Empresa>? empresasAsociadas;
+    private string busqueda = "";
+    private string filtroEstado = "";
+    private DateTime? filtroFechaDesde;
+    private DateTime? filtroFechaHasta;
+    private List<int> filtroEmpresaIds = new List<int>();
+    private bool mostrarModal = false;
+    private Factura facturaEditando = new Factura { TipoFactura = TipoFactura.Venta, Lineas = new List<LineaDocumento>() };
+    
+    // Modal de visualización solo lectura para Asesoría
+    private bool mostrarModalVer = false;
+    private Factura? facturaVisualizacion = null;
+    
+    // Modal de cliente
+    private bool mostrarModalCliente = false;
+    private Cliente clienteEditando = new Cliente();
+    
+    // Gestión de pagos - nuevo sistema modular
+    private bool mostrarModalListaPagos = false;
+    private bool mostrarModalDetallePago = false;
+    private bool mostrarModalNuevoPago = false;
+    private Factura? facturaParaPago;
+    private Cliente? clienteSeleccionado;
+    private List<PagoFactura>? pagosList;
+    private PagoFactura? pagoDetalle;
+    private PagoFactura nuevoPago = new PagoFactura();
+
+    private IEnumerable<Factura> FacturasFiltradas
+    {
+        get
+        {
+            if (facturas == null) return Enumerable.Empty<Factura>();
+
+            var resultado = facturas.AsEnumerable();
+
+            // Filtrar por búsqueda (número o cliente)
+            if (!string.IsNullOrWhiteSpace(busqueda))
+            {
+                resultado = resultado.Where(f =>
+                    f.NumeroFactura.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ||
+                    (f.Cliente?.Nombre?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            // Filtrar por estado
+            if (!string.IsNullOrWhiteSpace(filtroEstado))
+            {
+                resultado = resultado.Where(f => f.Estado.ToString() == filtroEstado);
+            }
+
+            // Filtrar por fecha desde
+            if (filtroFechaDesde.HasValue)
+            {
+                resultado = resultado.Where(f => f.FechaEmision >= filtroFechaDesde.Value);
+            }
+
+            // Filtrar por fecha hasta
+            if (filtroFechaHasta.HasValue)
+            {
+                resultado = resultado.Where(f => f.FechaEmision <= filtroFechaHasta.Value);
+            }
+
+            // Filtrar por empresa (para Asesoría)
+            if (filtroEmpresaIds.Any())
+            {
+                resultado = resultado.Where(f => filtroEmpresaIds.Contains(f.EmpresaId));
+            }
+
+            return resultado;
+        }
+    }
+
+    private void ToggleFiltroEmpresa(int empresaId, bool seleccionado)
+    {
+        if (seleccionado)
+        {
+            if (!filtroEmpresaIds.Contains(empresaId))
+            {
+                filtroEmpresaIds.Add(empresaId);
+            }
+        }
+        else
+        {
+            filtroEmpresaIds.Remove(empresaId);
+        }
+    }
+
+    private void ToggleTodasEmpresas(bool seleccionado)
+    {
+        if (seleccionado)
+        {
+            filtroEmpresaIds.Clear();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarFacturas();
+        clientes = await ClienteService.ObtenerTodosAsync();
+        productos = await ProductoService.ObtenerActivosAsync();
+        
+        // Cargar empresas asociadas si es Asesoría
+        if (AuthService.Rol == Roles.Asesoria && AuthService.EmpresaIds != null && AuthService.EmpresaIds.Any())
+        {
+            empresasAsociadas = new List<Empresa>();
+            foreach (var empresaId in AuthService.EmpresaIds)
+            {
+                var empresa = await EmpresaService.ObtenerPorIdAsync(empresaId);
+                if (empresa != null)
+                {
+                    empresasAsociadas.Add(empresa);
+                }
+            }
+        }
+        
+        // Cargar formas de pago
+        formasPago = await FormaPagoService.ObtenerActivosAsync();
+        if (formasPago == null || !formasPago.Any())
+        {
+            await FormaPagoService.InicializarFormasPredefinidasAsync();
+            formasPago = await FormaPagoService.ObtenerActivosAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && facturas != null && facturas.Any())
+        {
+            // Esperar un momento para asegurar que el DOM esté listo
+            await Task.Delay(100);
+            await RenderizarGraficos();
+        }
+    }
+
+    private async Task RenderizarGraficos()
+    {
+        if (facturas == null || !facturas.Any())
+        {
+            Console.WriteLine("No hay facturas para renderizar gráficos");
+            return;
+        }
+
+        try
+        {
+            Console.WriteLine($"Renderizando gráficos con {facturas.Count} facturas");
+            
+            // Datos para gráfico de facturas por estado
+            var estadosData = new
+            {
+                labels = new[] { "Borrador", "Emitida", "Enviada", "Pagada", "Vencida", "Cancelada" },
+                counts = new[]
+                {
+                    facturas.Count(f => f.Estado == EstadoFactura.Borrador),
+                    facturas.Count(f => f.Estado == EstadoFactura.Emitida),
+                    facturas.Count(f => f.Estado == EstadoFactura.Enviada),
+                    facturas.Count(f => f.Estado == EstadoFactura.Pagada),
+                    facturas.Count(f => f.Estado == EstadoFactura.Vencida),
+                    facturas.Count(f => f.Estado == EstadoFactura.Cancelada)
+                }
+            };
+
+            // Datos para gráfico de distribución de importes
+            var importesData = new
+            {
+                labels = new[] { "Pagada", "Pendiente", "Vencida", "Cancelada" },
+                amounts = new[]
+                {
+                    facturas.Where(f => f.Estado == EstadoFactura.Pagada).Sum(f => (double)f.Total),
+                    facturas.Where(f => f.Estado == EstadoFactura.Emitida || f.Estado == EstadoFactura.Enviada).Sum(f => (double)f.Total),
+                    facturas.Where(f => f.Estado == EstadoFactura.Vencida).Sum(f => (double)f.Total),
+                    facturas.Where(f => f.Estado == EstadoFactura.Cancelada).Sum(f => (double)f.Total)
+                }
+            };
+
+            Console.WriteLine($"Estados: {string.Join(", ", estadosData.counts)}");
+            Console.WriteLine($"Importes: {string.Join(", ", importesData.amounts)}");
+            
+            await JSRuntime.InvokeVoidAsync("renderizarGraficosFacturas", estadosData, importesData);
+            Console.WriteLine("Llamada a JavaScript completada");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al renderizar gráficos: {ex.Message}");
+        }
+    }
+
+    private async Task CargarFacturas()
+    {
+        // Si es Asesoría, cargar facturas de todas las empresas asociadas
+        if (AuthService.Rol == Roles.Asesoria)
+        {
+            var todasLasFacturas = await FacturaService.ObtenerPorEmpresasAsync(AuthService.EmpresaIds);
+            facturas = todasLasFacturas.Where(f => f.TipoFactura == TipoFactura.Venta).ToList();
+        }
+        else
+        {
+            var todasLasFacturas = await FacturaService.ObtenerTodosAsync();
+            facturas = todasLasFacturas.Where(f => f.TipoFactura == TipoFactura.Venta).ToList();
+        }
+        
+        if (facturas != null && facturas.Any())
+        {
+            await RenderizarGraficos();
+        }
+    }
+    
+    private async Task ExportarAExcel()
+    {
+        try
+        {
+            var facturasParaExportar = FacturasFiltradas.ToList();
+            if (!facturasParaExportar.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No hay facturas para exportar");
+                return;
+            }
+            
+            var excelBytes = ExcelExportService.ExportarFacturasAExcel(facturasParaExportar, "Venta");
+            var fileName = $"FacturasVenta_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            
+            await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, Convert.ToBase64String(excelBytes));
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar: {ex.Message}");
+        }
+    }
+
+    private void NuevaFactura()
+    {
+        facturaEditando = new Factura
+        {
+            FechaEmision = DateTime.Now,
+            TipoFactura = TipoFactura.Venta,
+            Estado = EstadoFactura.Borrador,
+            Lineas = new List<LineaDocumento>()
+        };
+        mostrarModal = true;
+        CalcularTotalModal();
+    }
+
+    private async Task AbrirFactura(int id)
+    {
+        Console.WriteLine($"AbrirFactura llamado con ID: {id}, Rol: {AuthService.Rol}");
+        
+        if (AuthService.Rol == Roles.Asesoria)
+        {
+            await VerFacturaAsesoria(id);
+        }
+        else
+        {
+            await EditarFactura(id);
+        }
+    }
+
+    private async Task EditarFactura(int id)
+    {
+        Console.WriteLine($"EditarFactura llamado con ID: {id}");
+        var factura = await FacturaService.ObtenerPorIdAsync(id);
+        Console.WriteLine($"Factura obtenida: {factura != null}");
+        if (factura != null)
+        {
+            facturaEditando = factura;
+            mostrarModal = true;
+            Console.WriteLine($"mostrarModal = {mostrarModal}");
+            CalcularTotalModal();
+            StateHasChanged();
+        }
+    }
+
+    private async Task VerFacturaAsesoria(int id)
+    {
+        Console.WriteLine($"VerFacturaAsesoria llamado con ID: {id}");
+        
+        // Para Asesoría, usar el método que valida contra las empresas asociadas
+        var factura = await FacturaService.ObtenerPorIdYEmpresasAsync(id, AuthService.EmpresaIds);
+        Console.WriteLine($"Factura obtenida: {factura != null}");
+        
+        if (factura != null)
+        {
+            facturaVisualizacion = factura;
+            mostrarModalVer = true;
+            Console.WriteLine($"mostrarModalVer = {mostrarModalVer}");
+            StateHasChanged();
+        }
+        else
+        {
+            Console.WriteLine("No se pudo obtener la factura o no tienes permisos");
+        }
+    }
+
+    private void CerrarModalVer()
+    {
+        mostrarModalVer = false;
+        facturaVisualizacion = null;
+        StateHasChanged();
+    }
+
+    private async Task ImprimirFacturaVer()
+    {
+        if (facturaVisualizacion?.Id > 0)
+        {
+            try
+            {
+                // Cargar factura completa con cliente y líneas
+                var facturaCompleta = await FacturaService.ObtenerPorIdAsync(facturaVisualizacion.Id);
+                
+                if (facturaCompleta == null || facturaCompleta.Cliente == null)
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Error al cargar los datos de la factura. Asegúrese de que la factura tenga un cliente asignado.");
+                    return;
+                }
+
+                // Obtener configuración de la empresa específica de la factura
+                var config = await ConfiguracionEmpresaService.ObtenerPorEmpresaIdAsync(facturaCompleta.EmpresaId);
+
+                // Generar el PDF para IMPRIMIR
+                byte[] pdfBytes = FacturaPdfService.GenerarFacturaPdf(facturaCompleta, facturaCompleta.Cliente, config, paraEmail: false);
+
+                // Convertir a Base64 y usar iframe oculto para imprimir directamente
+                string base64Pdf = Convert.ToBase64String(pdfBytes);
+                await JSRuntime.InvokeVoidAsync("eval", $@"
+                    var byteCharacters = atob('{base64Pdf}');
+                    var byteNumbers = new Array(byteCharacters.length);
+                    for (var i = 0; i < byteCharacters.length; i++) {{
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }}
+                    var byteArray = new Uint8Array(byteNumbers);
+                    var blob = new Blob([byteArray], {{type: 'application/pdf'}});
+                    var url = URL.createObjectURL(blob);
+                    
+                    // Crear iframe oculto para imprimir directamente
+                    var iframe = document.createElement('iframe');
+                    iframe.style.position = 'fixed';
+                    iframe.style.right = '0';
+                    iframe.style.bottom = '0';
+                    iframe.style.width = '0';
+                    iframe.style.height = '0';
+                    iframe.style.border = 'none';
+                    iframe.src = url;
+                    document.body.appendChild(iframe);
+                    
+                    iframe.onload = function() {{
+                        setTimeout(function() {{
+                            iframe.contentWindow.print();
+                        }}, 200);
+                    }};
+                ");
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error al imprimir factura: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task DescargarDocumentoVer()
+    {
+        if (facturaVisualizacion != null && !string.IsNullOrEmpty(facturaVisualizacion.DocumentoAdjunto))
+        {
+            try
+            {
+                var nombreArchivo = facturaVisualizacion.NombreDocumento?.Replace("'", "\\'") ?? "documento.pdf";
+                var tipoDocumento = facturaVisualizacion.TipoDocumento?.Replace("'", "\\'") ?? "application/pdf";
+                var documentoBase64 = facturaVisualizacion.DocumentoAdjunto?.Replace("'", "\\'") ?? "";
+                
+                await JSRuntime.InvokeVoidAsync("eval", $@"
+                    (function() {{
+                        try {{
+                            var base64 = '{documentoBase64}';
+                            var nombreArchivo = '{nombreArchivo}';
+                            var tipoDocumento = '{tipoDocumento}';
+                            
+                            var byteCharacters = atob(base64);
+                            var byteNumbers = new Array(byteCharacters.length);
+                            for (var i = 0; i < byteCharacters.length; i++) {{
+                                byteNumbers[i] = byteCharacters.charCodeAt(i);
+                            }}
+                            var byteArray = new Uint8Array(byteNumbers);
+                            var blob = new Blob([byteArray], {{ type: tipoDocumento }});
+                            var link = document.createElement('a');
+                            link.href = window.URL.createObjectURL(blob);
+                            link.download = nombreArchivo;
+                            link.click();
+                            window.URL.revokeObjectURL(link.href);
+                        }} catch (error) {{
+                            console.error('Error al descargar:', error);
+                            alert('Error al descargar el documento: ' + error.message);
+                        }}
+                    }})();
+                ");
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error al descargar documento: {ex.Message}");
+            }
+        }
+    }
+
+    private void VerFactura(int id)
+    {
+        Navigation.NavigateTo($"/facturas/editar/{id}");
+    }
+
+    private async Task MarcarComoPagada(int id)
+    {
+        var factura = await FacturaService.ObtenerPorIdAsync(id);
+        if (factura != null)
+        {
+            factura.Estado = EstadoFactura.Pagada;
+            factura.FechaPago = DateTime.Now;
+            await FacturaService.ActualizarAsync(id, factura);
+            await CargarFacturas();
+        }
+    }
+
+    private async Task EliminarFactura(int id)
+    {
+        var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar esta factura?");
+        if (confirmar)
+        {
+            await FacturaService.EliminarAsync(id);
+            await CargarFacturas();
+        }
+    }
+
+    private async Task EnviarPorEmail(Factura factura)
+    {
+        await JSRuntime.InvokeVoidAsync("alert", $"Funcionalidad de envío por email para factura {factura.NumeroFactura} en desarrollo");
+        // TODO: Implementar servicio de envío de email
+    }
+
+    private async Task GestionarPagos(int facturaId)
+    {
+        var factura = await FacturaService.ObtenerPorIdAsync(facturaId);
+        if (factura != null)
+        {
+            facturaParaPago = factura;
+            clienteSeleccionado = null;
+            pagosList = factura.Pagos?.ToList();
+            mostrarModalListaPagos = true;
+        }
+    }
+
+    private async Task AbrirDetallePago(int pagoId)
+    {
+        try
+        {
+            // Buscar el pago en la lista actual
+            pagoDetalle = pagosList?.FirstOrDefault(p => p.Id == pagoId);
+            
+            if (pagoDetalle == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo cargar el detalle del pago");
+                return;
+            }
+            
+            mostrarModalDetallePago = true;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al abrir detalle: {ex.Message}");
+        }
+    }
+
+    private void CerrarModalDetallePago()
+    {
+        mostrarModalDetallePago = false;
+        pagoDetalle = null;
+    }
+
+    private void AbrirModalNuevoPago()
+    {
+        if (facturaParaPago != null)
+        {
+            nuevoPago = new PagoFactura
+            {
+                FacturaId = facturaParaPago.Id,
+                FechaPago = DateTime.Now,
+                Importe = facturaParaPago.PendientePago,
+                FormaPago = FormaPago.Transferencia
+            };
+            mostrarModalNuevoPago = true;
+        }
+    }
+
+    private void CerrarModalNuevoPago()
+    {
+        mostrarModalNuevoPago = false;
+        nuevoPago = new PagoFactura();
+    }
+
+    private void CerrarModalListaPagos()
+    {
+        mostrarModalListaPagos = false;
+        facturaParaPago = null;
+        clienteSeleccionado = null;
+        pagosList = null;
+        nuevoPago = new PagoFactura();
+    }
+
+    private async Task RegistrarPago()
+    {
+        try
+        {
+            if (nuevoPago.Importe <= 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El importe debe ser mayor que 0");
+                return;
+            }
+
+            if (facturaParaPago != null && nuevoPago.Importe > facturaParaPago.PendientePago)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"El importe no puede ser mayor que el pendiente ({facturaParaPago.PendientePago:C2})");
+                return;
+            }
+
+            await FacturaService.RegistrarPagoAsync(nuevoPago);
+            
+            // Recargar la factura y actualizar la lista de pagos
+            if (facturaParaPago != null)
+            {
+                var facturaActualizada = await FacturaService.ObtenerPorIdAsync(facturaParaPago.Id);
+                if (facturaActualizada != null)
+                {
+                    facturaParaPago = facturaActualizada;
+                    pagosList = facturaActualizada.Pagos?.ToList();
+                }
+            }
+            
+            await CargarFacturas();
+            CerrarModalNuevoPago();
+            await JSRuntime.InvokeVoidAsync("alert", "Pago registrado correctamente");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al registrar el pago: {ex.Message}");
+        }
+    }
+
+    private async Task EliminarPago(int pagoId)
+    {
+        var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este pago?");
+        if (confirmar)
+        {
+            await FacturaService.EliminarPagoAsync(pagoId);
+            
+            // Recargar la factura y actualizar la lista de pagos
+            if (facturaParaPago != null)
+            {
+                var facturaActualizada = await FacturaService.ObtenerPorIdAsync(facturaParaPago.Id);
+                if (facturaActualizada != null)
+                {
+                    facturaParaPago = facturaActualizada;
+                    pagosList = facturaActualizada.Pagos?.ToList();
+                }
+            }
+            
+            await CargarFacturas();
+        }
+    }
+
+    private async Task ExportarPagoXML(int pagoId)
+    {
+        try
+        {
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo obtener la empresa activa");
+                return;
+            }
+            
+            // Exportar un solo pago
+            var xmlContent = await SEPAService.GenerarXMLSEPA(new List<int> { pagoId }, empresaId.Value);
+            var pago = pagosList?.FirstOrDefault(p => p.Id == pagoId) ?? pagoDetalle;
+            var fileName = $"Pago_{pago?.Factura?.NumeroFactura ?? "Unknown"}_{pago?.FechaPago:yyyyMMdd}.xml";
+            
+            // Descargar el archivo XML
+            await JSRuntime.InvokeVoidAsync("descargarArchivo", fileName, xmlContent, "text/xml");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar pago: {ex.Message}");
+        }
+    }
+
+    private async Task ExportarFacturaE(Factura factura)
+    {
+        try
+        {
+            var xml = await FacturaEService.GenerarFacturaEXmlAsync(factura.Id);
+            
+            // Convertir el XML a bytes
+            var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xml);
+            var base64 = Convert.ToBase64String(xmlBytes);
+            
+            // Descargar el archivo usando JavaScript
+            var nombreArchivo = $"Factura_{factura.NumeroFactura.Replace("/", "-")}_{DateTime.Now:yyyyMMdd}.xml";
+            await JSRuntime.InvokeVoidAsync("downloadFile", nombreArchivo, base64, "text/xml");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar a FacturaE: {ex.Message}");
+        }
+    }
+
+    private async Task Imprimir(Factura factura)
+    {
+        try
+        {
+            // Cargar factura completa con cliente y líneas
+            var facturaCompleta = await FacturaService.ObtenerPorIdAsync(factura.Id);
+            
+            if (facturaCompleta == null || facturaCompleta.Cliente == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error al cargar los datos de la factura. Asegúrese de que la factura tenga un cliente asignado.");
+                return;
+            }
+
+            // Obtener configuración de la empresa específica de la factura
+            var config = await ConfiguracionEmpresaService.ObtenerPorEmpresaIdAsync(facturaCompleta.EmpresaId);
+
+            // Generar el PDF para IMPRIMIR
+            byte[] pdfBytes = FacturaPdfService.GenerarFacturaPdf(facturaCompleta, facturaCompleta.Cliente, config, paraEmail: false);
+
+            // Convertir a Base64 y usar iframe oculto para imprimir directamente
+            string base64Pdf = Convert.ToBase64String(pdfBytes);
+            await JSRuntime.InvokeVoidAsync("eval", $@"
+                var byteCharacters = atob('{base64Pdf}');
+                var byteNumbers = new Array(byteCharacters.length);
+                for (var i = 0; i < byteCharacters.length; i++) {{
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }}
+                var byteArray = new Uint8Array(byteNumbers);
+                var blob = new Blob([byteArray], {{type: 'application/pdf'}});
+                var url = URL.createObjectURL(blob);
+                
+                // Crear iframe oculto para imprimir directamente
+                var iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '0';
+                iframe.style.height = '0';
+                iframe.style.border = 'none';
+                iframe.src = url;
+                document.body.appendChild(iframe);
+                
+                iframe.onload = function() {{
+                    setTimeout(function() {{
+                        iframe.contentWindow.focus();
+                        iframe.contentWindow.print();
+                    }}, 250);
+                }};
+            ");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al imprimir: {ex.Message}");
+        }
+    }
+
+    private string ObtenerColorEstado(EstadoFactura estado)
+    {
+        return estado switch
+        {
+            EstadoFactura.Borrador => "secondary",
+            EstadoFactura.Emitida => "primary",
+            EstadoFactura.Enviada => "info",
+            EstadoFactura.Pagada => "success",
+            EstadoFactura.Vencida => "warning",
+            EstadoFactura.Cancelada => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private string ObtenerClaseEstado(EstadoFactura estado)
+    {
+        return estado switch
+        {
+            EstadoFactura.Borrador => "bg-secondary text-white",
+            EstadoFactura.Emitida => "bg-primary text-white",
+            EstadoFactura.Enviada => "bg-info text-white",
+            EstadoFactura.Pagada => "bg-success text-white",
+            EstadoFactura.Vencida => "bg-warning text-dark",
+            EstadoFactura.Cancelada => "bg-danger text-white",
+            _ => "bg-secondary text-white"
+        };
+    }
+
+    private string ObtenerEstiloEstado(EstadoFactura estado)
+    {
+        return "";
+    }
+
+    // Métodos para el modal
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        facturaEditando = new Factura();
+    }
+
+    private async Task GuardarFactura()
+    {
+        try
+        {
+            // Validaciones
+            if (facturaEditando.ClienteId == 0 || !facturaEditando.ClienteId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Debe seleccionar un cliente");
+                return;
+            }
+
+            if (!facturaEditando.Lineas.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Debe agregar al menos una línea a la factura");
+                return;
+            }
+
+            CalcularTotalModal();
+            
+            if (facturaEditando.Id > 0)
+            {
+                await FacturaService.ActualizarAsync(facturaEditando.Id, facturaEditando);
+            }
+            else
+            {
+                await FacturaService.CrearAsync(facturaEditando);
+            }
+            
+            await CargarFacturas();
+            CerrarModal();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al guardar la factura: {ex.Message}");
+        }
+    }
+
+    // Métodos para manejo de documentos adjuntos
+    private async Task CargarDocumento(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var archivo = e.File;
+            
+            // Validar tamaño (30MB máximo)
+            if (archivo.Size > 30 * 1024 * 1024)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El archivo es demasiado grande. Tamaño máximo: 30MB");
+                return;
+            }
+
+            // Validar tipo de archivo
+            var tiposPermitidos = new[] { "application/pdf", "image/jpeg", "image/jpg", "image/png", 
+                                          "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                          "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+            
+            if (!tiposPermitidos.Contains(archivo.ContentType))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Tipo de archivo no permitido. Use PDF, imágenes, Word o Excel.");
+                return;
+            }
+
+            // Leer el archivo
+            using var stream = archivo.OpenReadStream(maxAllowedSize: 30 * 1024 * 1024);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            var bytes = memoryStream.ToArray();
+
+            // Convertir a base64
+            var base64 = Convert.ToBase64String(bytes);
+
+            // Si es una imagen, intentar comprimirla
+            if (archivo.ContentType.StartsWith("image/"))
+            {
+                try
+                {
+                    var dataUrl = $"data:{archivo.ContentType};base64,{base64}";
+                    var comprimido = await JSRuntime.InvokeAsync<string>("redimensionarImagen", dataUrl, 1920, 1920);
+                    if (!string.IsNullOrEmpty(comprimido))
+                    {
+                        base64 = comprimido.Split(',')[1]; // Quitar el prefijo data:image/...;base64,
+                    }
+                }
+                catch
+                {
+                    // Si falla la compresión, usar el original
+                }
+            }
+
+            // Guardar en la factura
+            facturaEditando.DocumentoAdjunto = base64;
+            facturaEditando.NombreDocumento = archivo.Name;
+            facturaEditando.TipoDocumento = archivo.ContentType;
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al cargar el documento: {ex.Message}");
+        }
+    }
+
+    private async Task DescargarDocumento()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(facturaEditando.DocumentoAdjunto) || string.IsNullOrEmpty(facturaEditando.NombreDocumento))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No hay documento adjunto para descargar");
+                return;
+            }
+
+            var base64Escaped = facturaEditando.DocumentoAdjunto.Replace("'", "\\'");
+            var nombreEscaped = facturaEditando.NombreDocumento.Replace("'", "\\'");
+            var tipoEscaped = facturaEditando.TipoDocumento?.Replace("'", "\\'") ?? "application/octet-stream";
+
+            await JSRuntime.InvokeVoidAsync("eval", 
+                $@"(function() {{
+                    const base64String = '{base64Escaped}';
+                    const byteCharacters = atob(base64String);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {{
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }}
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], {{type: '{tipoEscaped}'}});
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = '{nombreEscaped}';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }})();");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al descargar el documento: {ex.Message}");
+            Console.WriteLine($"Error en DescargarDocumento: {ex}");
+        }
+    }
+
+    private async Task DescargarDocumentoListado(Factura factura)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(factura.DocumentoAdjunto) || string.IsNullOrEmpty(factura.NombreDocumento))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No hay documento adjunto para descargar");
+                return;
+            }
+
+            var base64Escaped = factura.DocumentoAdjunto.Replace("'", "\\'");
+            var nombreEscaped = factura.NombreDocumento.Replace("'", "\\'");
+            var tipoEscaped = factura.TipoDocumento?.Replace("'", "\\'") ?? "application/octet-stream";
+
+            await JSRuntime.InvokeVoidAsync("eval", 
+                $@"(function() {{
+                    const base64String = '{base64Escaped}';
+                    const byteCharacters = atob(base64String);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {{
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }}
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], {{type: '{tipoEscaped}'}});
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = '{nombreEscaped}';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }})();");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al descargar el documento: {ex.Message}");
+            Console.WriteLine($"Error en DescargarDocumentoListado: {ex}");
+        }
+    }
+
+    private void EliminarDocumento()
+    {
+        facturaEditando.DocumentoAdjunto = null;
+        facturaEditando.NombreDocumento = null;
+        facturaEditando.TipoDocumento = null;
+        StateHasChanged();
+    }
+
+    private void VerCliente()
+    {
+        if (facturaEditando.ClienteId > 0)
+        {
+            var cliente = clientes?.FirstOrDefault(c => c.Id == facturaEditando.ClienteId);
+            if (cliente != null)
+            {
+                clienteEditando = new Cliente
+                {
+                    Id = cliente.Id,
+                    Tipo = cliente.Tipo,
+                    NIF = cliente.NIF,
+                    Nombre = cliente.Nombre,
+                    Apellidos = cliente.Apellidos,
+                    NombreEmpresa = cliente.NombreEmpresa,
+                    Direccion = cliente.Direccion,
+                    Ciudad = cliente.Ciudad,
+                    CodigoPostal = cliente.CodigoPostal,
+                    Provincia = cliente.Provincia,
+                    Pais = cliente.Pais,
+                    Telefono = cliente.Telefono,
+                    Email = cliente.Email,
+                    EmailSecundario = cliente.EmailSecundario,
+                    FormaPago = cliente.FormaPago,
+                    Activo = cliente.Activo
+                };
+                mostrarModalCliente = true;
+            }
+        }
+    }
+    
+    private void CrearCliente()
+    {
+        clienteEditando = new Cliente 
+        { 
+            Tipo = TipoCliente.Empresa, 
+            Pais = "ESP", 
+            Activo = true 
+        };
+        mostrarModalCliente = true;
+    }
+    
+    private void CerrarModalCliente()
+    {
+        mostrarModalCliente = false;
+    }
+    
+    private async Task GuardarClienteDesdeModal()
+    {
+        try
+        {
+            Cliente clienteGuardado;
+            
+            if (clienteEditando.Id > 0)
+            {
+                // Actualizar cliente existente
+                var resultado = await ClienteService.ActualizarAsync(clienteEditando.Id, clienteEditando);
+                if (resultado != null)
+                {
+                    clienteGuardado = resultado;
+                    await JSRuntime.InvokeVoidAsync("alert", "Cliente actualizado correctamente");
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Error al actualizar el cliente");
+                    return;
+                }
+            }
+            else
+            {
+                // Crear nuevo cliente
+                clienteGuardado = await ClienteService.CrearAsync(clienteEditando);
+                await JSRuntime.InvokeVoidAsync("alert", "Cliente creado correctamente");
+                
+                // Auto-seleccionar el nuevo cliente en la factura
+                facturaEditando.ClienteId = clienteGuardado.Id;
+                
+                // Auto-rellenar forma de pago si el cliente la tiene
+                if (clienteGuardado.FormaPago.HasValue)
+                {
+                    await OnClienteChangedAsync(clienteGuardado.Id);
+                }
+            }
+            
+            // Recargar lista de clientes
+            clientes = await ClienteService.ObtenerTodosAsync();
+            
+            // Cerrar modal de cliente y refrescar UI
+            mostrarModalCliente = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al guardar cliente: {ex.Message}");
+        }
+    }
+    
+    private async Task OnClienteChangedAsync(int clienteId)
+    {
+        Console.WriteLine($"========== [FacturasVenta] OnClienteChangedAsync - ClienteId: {clienteId} ==========");
+        
+        facturaEditando.ClienteId = clienteId;
+        
+        if (clienteId > 0)
+        {
+            var cliente = clientes?.FirstOrDefault(c => c.Id == clienteId);
+            Console.WriteLine($"Cliente: {cliente?.Nombre ?? "NULL"}, FormaPago: {cliente?.FormaPago?.ToString() ?? "NULL"}");
+            
+            if (cliente != null && cliente.FormaPago.HasValue)
+            {
+                var nombreFormaPago = ObtenerNombreFormaPago(cliente.FormaPago.Value);
+                Console.WriteLine($"Nombre mapeado: '{nombreFormaPago}'");
+                
+                var formaPagoPersonalizada = formasPago?.FirstOrDefault(f => 
+                    f.Nombre.Equals(nombreFormaPago, StringComparison.OrdinalIgnoreCase));
+                
+                if (formaPagoPersonalizada != null)
+                {
+                    Console.WriteLine($"✓ FormaPago encontrada: '{formaPagoPersonalizada.Nombre}' (ID: {formaPagoPersonalizada.Id})");
+                    facturaEditando.FormaPagoPersonalizadaId = formaPagoPersonalizada.Id;
+                }
+                else
+                {
+                    Console.WriteLine($"✗ No se encontró FormaPagoPersonalizada: '{nombreFormaPago}'");
+                }
+            }
+        }
+        
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    private void AgregarLinea()
+    {
+        facturaEditando.Lineas.Add(new LineaDocumento
+        {
+            Cantidad = 1,
+            IVA = 21
+        });
+        CalcularTotalModal();
+    }
+
+    private void EliminarLinea(int index)
+    {
+        facturaEditando.Lineas.RemoveAt(index);
+        CalcularTotalModal();
+    }
+
+    private void CambiarProducto(int index, int? productoId)
+    {
+        var linea = facturaEditando.Lineas[index];
+        if (!productoId.HasValue || productoId == 0)
+            return;
+            
+        var producto = productos?.FirstOrDefault(p => p.Id == productoId.Value);
+        if (producto != null)
+        {
+            linea.ProductoId = producto.Id;
+            linea.Producto = producto;
+            linea.Descripcion = producto.Descripcion ?? producto.Nombre;
+            linea.PrecioUnitario = producto.PrecioUnitario;
+            linea.IVA = producto.IVA;
+        }
+        
+        CalcularTotalModal();
+    }
+
+    private void CalcularTotalModal()
+    {
+        // Calcular importes de cada línea primero
+        foreach (var linea in facturaEditando.Lineas)
+        {
+            linea.CalcularImportes();
+        }
+        
+        // Calcular subtotal de líneas (ya se calcula automáticamente en la propiedad)
+        var subtotal = facturaEditando.Subtotal;
+        
+        // Calcular base imponible
+        facturaEditando.BaseImponible = subtotal - facturaEditando.DescuentosGenerales + facturaEditando.RecargosGenerales;
+        
+        // Calcular importe IVA (ya se calcula automáticamente en TotalIVA)
+        facturaEditando.ImporteIVA = facturaEditando.TotalIVA;
+        
+        // Calcular retención
+        facturaEditando.ImporteRetencion = facturaEditando.BaseImponible * (facturaEditando.PorcentajeRetencion / 100);
+        
+        // Calcular total
+        facturaEditando.Total = facturaEditando.BaseImponible + facturaEditando.ImporteIVA + facturaEditando.CargosAdicionales - facturaEditando.ImporteRetencion;
+        
+        StateHasChanged();
+    }
+
+    // Métodos para acciones de factura
+    private async Task ImprimirFactura()
+    {
+        if (facturaEditando?.Id > 0)
+        {
+            try
+            {
+                // Cargar factura completa con cliente y líneas
+                var facturaCompleta = await FacturaService.ObtenerPorIdAsync(facturaEditando.Id);
+                
+                if (facturaCompleta == null || facturaCompleta.Cliente == null)
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Error al cargar los datos de la factura. Asegúrese de que la factura tenga un cliente asignado.");
+                    return;
+                }
+
+                var config = await ConfiguracionEmpresaService.ObtenerConfiguracionAsync();
+
+                // Generar el PDF para IMPRIMIR
+                byte[] pdfBytes = FacturaPdfService.GenerarFacturaPdf(facturaCompleta, facturaCompleta.Cliente, config, paraEmail: false);
+
+                // Convertir a Base64 y usar iframe oculto para imprimir directamente
+                string base64Pdf = Convert.ToBase64String(pdfBytes);
+                await JSRuntime.InvokeVoidAsync("eval", $@"
+                    var byteCharacters = atob('{base64Pdf}');
+                    var byteNumbers = new Array(byteCharacters.length);
+                    for (var i = 0; i < byteCharacters.length; i++) {{
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }}
+                    var byteArray = new Uint8Array(byteNumbers);
+                    var blob = new Blob([byteArray], {{type: 'application/pdf'}});
+                    var url = URL.createObjectURL(blob);
+                    
+                    // Crear iframe oculto para imprimir directamente
+                    var iframe = document.createElement('iframe');
+                    iframe.style.position = 'fixed';
+                    iframe.style.right = '0';
+                    iframe.style.bottom = '0';
+                    iframe.style.width = '0';
+                    iframe.style.height = '0';
+                    iframe.style.border = 'none';
+                    iframe.src = url;
+                    document.body.appendChild(iframe);
+                    
+                    iframe.onload = function() {{
+                        setTimeout(function() {{
+                            iframe.contentWindow.focus();
+                            iframe.contentWindow.print();
+                        }}, 250);
+                    }};
+                ");
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error al imprimir: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task EnviarEmail()
+    {
+        if (facturaEditando?.Id > 0)
+        {
+            try
+            {
+                // Cargar factura completa con cliente
+                var facturaCompleta = await FacturaService.ObtenerPorIdAsync(facturaEditando.Id);
+                
+                if (facturaCompleta == null || facturaCompleta.Cliente == null)
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Error: La factura no tiene un cliente asignado.");
+                    return;
+                }
+
+                // Verificar que el cliente tenga email
+                if (string.IsNullOrEmpty(facturaCompleta.Cliente.Email))
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Error: El cliente no tiene un email configurado en su ficha.");
+                    return;
+                }
+
+                var config = await ConfiguracionEmpresaService.ObtenerConfiguracionAsync();
+
+                // Generar PDF para email
+                byte[] pdfBytes = FacturaPdfService.GenerarFacturaPdf(facturaCompleta, facturaCompleta.Cliente, config, paraEmail: true);
+
+                // Preparar email
+                var nombreEmpresa = config?.NombreEmpresa ?? "FactioX";
+                var asunto = $"Factura {facturaCompleta.NumeroFactura} - {nombreEmpresa}";
+                
+                // Construir cuerpo del email
+                var cuerpoBuilder = new System.Text.StringBuilder();
+                cuerpoBuilder.AppendLine("<html>");
+                cuerpoBuilder.AppendLine("<body style='font-family: Arial, sans-serif;'>");
+                cuerpoBuilder.AppendLine($"<h2>Factura {facturaCompleta.NumeroFactura}</h2>");
+                cuerpoBuilder.AppendLine($"<p>Estimado/a {facturaCompleta.Cliente.Nombre},</p>");
+                cuerpoBuilder.AppendLine($"<p>Adjuntamos la factura <strong>{facturaCompleta.NumeroFactura}</strong> con fecha {facturaCompleta.FechaEmision:dd/MM/yyyy}.</p>");
+                cuerpoBuilder.AppendLine($"<p><strong>Importe total:</strong> {facturaCompleta.Total:C2}</p>");
+                cuerpoBuilder.AppendLine("<p>Para cualquier consulta, no dude en contactarnos.</p>");
+                cuerpoBuilder.AppendLine("<br/>");
+                cuerpoBuilder.AppendLine($"<p>Atentamente,<br/>{nombreEmpresa}</p>");
+                if (!string.IsNullOrEmpty(config?.Email))
+                {
+                    cuerpoBuilder.AppendLine($"<p style='color: #666; font-size: 12px;'>Email: {config.Email}</p>");
+                }
+                if (!string.IsNullOrEmpty(config?.Telefono))
+                {
+                    cuerpoBuilder.AppendLine($"<p style='color: #666; font-size: 12px;'>Teléfono: {config.Telefono}</p>");
+                }
+                cuerpoBuilder.AppendLine("</body>");
+                cuerpoBuilder.AppendLine("</html>");
+                var cuerpo = cuerpoBuilder.ToString();
+
+                var nombreArchivo = $"Factura_{facturaCompleta.NumeroFactura.Replace("/", "-")}_{DateTime.Now:yyyyMMdd}.pdf";
+
+                // Usar EmailSecundario en CC si existe
+                string? cc = !string.IsNullOrEmpty(facturaCompleta.Cliente.EmailSecundario) 
+                    ? facturaCompleta.Cliente.EmailSecundario 
+                    : null;
+
+                // Enviar email
+                await EmailService.EnviarEmailConAdjunto(
+                    facturaCompleta.Cliente.Email,
+                    asunto,
+                    cuerpo,
+                    pdfBytes,
+                    nombreArchivo,
+                    cc
+                );
+
+                await JSRuntime.InvokeVoidAsync("alert", $"Factura enviada correctamente a {facturaCompleta.Cliente.Email}");
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error al enviar email: {ex.Message}\n\nAsegúrate de tener configurado el servidor SMTP en appsettings.json");
+            }
+        }
+    }
+
+    private async Task ExportarXML()
+    {
+        try
+        {
+            if (facturaEditando?.Id == 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Debe guardar la factura antes de exportarla.");
+                return;
+            }
+            
+            var xml = await FacturaEService.GenerarFacturaEXmlAsync(facturaEditando.Id);
+            
+            // Convertir el XML a bytes
+            var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xml);
+            var base64 = Convert.ToBase64String(xmlBytes);
+            
+            // Descargar el archivo usando JavaScript
+            var nombreArchivo = $"Factura_{facturaEditando.NumeroFactura.Replace("/", "-")}_{DateTime.Now:yyyyMMdd}.xml";
+            await JSRuntime.InvokeVoidAsync("downloadFile", nombreArchivo, base64, "text/xml");
+            
+            await JSRuntime.InvokeVoidAsync("alert", "Factura exportada a formato FacturaE correctamente.");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar a FacturaE: {ex.Message}");
+        }
+    }
+
+    private async Task ExportarXMLFirmado()
+    {
+        try
+        {
+            if (facturaEditando?.Id == 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Debe guardar la factura antes de exportarla.");
+                return;
+            }
+            
+            // Obtener configuración de la empresa actual
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo obtener la empresa activa.");
+                return;
+            }
+            
+            var configuracion = await ConfiguracionEmpresaService.ObtenerPorEmpresaIdAsync(empresaId.Value);
+            if (configuracion == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se encontró la configuración de la empresa.");
+                return;
+            }
+            
+            // Verificar que la empresa tenga certificado configurado
+            if (string.IsNullOrWhiteSpace(configuracion.CertificadoRuta))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Esta empresa no tiene un certificado digital configurado.\n\nPor favor, configure el certificado en la página de Configuración antes de firmar facturas.");
+                return;
+            }
+            
+            if (string.IsNullOrWhiteSpace(configuracion.CertificadoPassword))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El certificado de la empresa no tiene contraseña configurada.\n\nPor favor, complete la configuración del certificado.");
+                return;
+            }
+            
+            // Verificar que el archivo del certificado existe
+            if (!File.Exists(configuracion.CertificadoRuta))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"No se encuentra el archivo del certificado en:\n{configuracion.CertificadoRuta}\n\nPor favor, verifique la ruta en la configuración de la empresa.");
+                return;
+            }
+            
+            // Generar XML sin firma
+            var xmlSinFirmar = await FacturaEService.GenerarFacturaEXmlAsync(facturaEditando.Id);
+            
+            // Firmar XML con el certificado de la empresa
+            var xmlFirmado = FirmaDigitalService.FirmarXml(xmlSinFirmar, configuracion.CertificadoRuta, configuracion.CertificadoPassword);
+            
+            // Convertir a bytes y descargar
+            var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xmlFirmado);
+            var base64 = Convert.ToBase64String(xmlBytes);
+            
+            var nombreArchivo = $"Factura_{facturaEditando.NumeroFactura.Replace("/", "-")}_FIRMADA_{DateTime.Now:yyyyMMdd}.xml";
+            await JSRuntime.InvokeVoidAsync("downloadFile", nombreArchivo, base64, "text/xml");
+            
+            await JSRuntime.InvokeVoidAsync("alert", "Factura firmada digitalmente y exportada correctamente.");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al firmar y exportar la factura: {ex.Message}");
+        }
+    }
+
+    // Exportar pagos a SEPA XML (todos los pagos de la factura actual)
+    private async Task ExportarSEPA()
+    {
+        if (pagosList == null || !pagosList.Any())
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "No hay pagos para exportar");
+            return;
+        }
+
+        try
+        {
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo obtener la empresa activa");
+                return;
+            }
+            
+            var pagoIds = pagosList.Select(p => p.Id).ToList();
+            
+            var xmlContent = await SEPAService.GenerarXMLSEPA(pagoIds, empresaId.Value);
+            var fileName = $"SEPA_{facturaParaPago?.NumeroFactura ?? "Pagos"}_{DateTime.Now:yyyyMMdd}.xml";
+            
+            // Descargar el archivo XML
+            await JSRuntime.InvokeVoidAsync("descargarArchivo", fileName, xmlContent, "text/xml");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar SEPA: {ex.Message}");
+        }
+    }
+    
+    private string ObtenerNombreFormaPago(FormaPago formaPago)
+    {
+        // Usar los atributos Display si existen, sino el nombre del enum
+        var tipo = typeof(FormaPago);
+        var memInfo = tipo.GetMember(formaPago.ToString());
+        
+        if (memInfo.Length > 0)
+        {
+            var attrs = memInfo[0].GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.DisplayAttribute), false);
+            if (attrs.Length > 0)
+            {
+                var displayAttr = (System.ComponentModel.DataAnnotations.DisplayAttribute)attrs[0];
+                return displayAttr.Name ?? formaPago.ToString();
+            }
+        }
+        
+        return formaPago.ToString();
+    }
+}
+
+<style>
+    .modal {
+        overflow-y: auto;
+    }
+
+    .modal-xl {
+        max-width: 95%;
+    }
+
+    .modal-backdrop {
+        background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .sticky-top {
+        position: sticky;
+    }
+</style>
+
+<script>
+    let chartFacturasPorEstado = null;
+    let chartDistribucionImportes = null;
+
+    window.renderizarGraficosFacturas = function(estadosData, importesData) {
+        console.log('Renderizando gráficos con datos:', estadosData, importesData);
+        
+        // Verificar que Chart.js esté disponible
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js no está cargado');
+            return;
+        }
+
+        // Destruir gráficos existentes si existen
+        if (chartFacturasPorEstado) {
+            chartFacturasPorEstado.destroy();
+        }
+        if (chartDistribucionImportes) {
+            chartDistribucionImportes.destroy();
+        }
+
+        // Gráfico de barras: Facturas por Estado
+        const ctxEstados = document.getElementById('chartFacturasPorEstado');
+        console.log('Canvas estados encontrado:', ctxEstados);
+        if (ctxEstados) {
+            chartFacturasPorEstado = new Chart(ctxEstados, {
+                type: 'bar',
+                data: {
+                    labels: estadosData.labels,
+                    datasets: [{
+                        label: 'Cantidad de Facturas',
+                        data: estadosData.counts,
+                        backgroundColor: [
+                            'rgba(108, 117, 125, 0.7)',  // Borrador - Gris
+                            'rgba(13, 110, 253, 0.7)',   // Emitida - Azul
+                            'rgba(13, 202, 240, 0.7)',   // Enviada - Cyan
+                            'rgba(25, 135, 84, 0.7)',    // Pagada - Verde
+                            'rgba(255, 193, 7, 0.7)',    // Vencida - Amarillo
+                            'rgba(220, 53, 69, 0.7)'     // Cancelada - Rojo
+                        ],
+                        borderColor: [
+                            'rgba(108, 117, 125, 1)',
+                            'rgba(13, 110, 253, 1)',
+                            'rgba(13, 202, 240, 1)',
+                            'rgba(25, 135, 84, 1)',
+                            'rgba(255, 193, 7, 1)',
+                            'rgba(220, 53, 69, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+            console.log('Gráfico de estados creado');
+        } else {
+            console.error('No se encontró el canvas chartFacturasPorEstado');
+        }
+
+        // Gráfico circular: Distribución de Importes
+        const ctxImportes = document.getElementById('chartDistribucionImportes');
+        console.log('Canvas importes encontrado:', ctxImportes);
+        if (ctxImportes) {
+            chartDistribucionImportes = new Chart(ctxImportes, {
+                type: 'doughnut',
+                data: {
+                    labels: importesData.labels,
+                    datasets: [{
+                        label: 'Importe (€)',
+                        data: importesData.amounts,
+                        backgroundColor: [
+                            'rgba(25, 135, 84, 0.7)',    // Pagada - Verde
+                            'rgba(255, 193, 7, 0.7)',    // Pendiente - Amarillo
+                            'rgba(220, 53, 69, 0.7)',    // Vencida - Rojo
+                            'rgba(108, 117, 125, 0.7)'   // Cancelada - Gris
+                        ],
+                        borderColor: [
+                            'rgba(25, 135, 84, 1)',
+                            'rgba(255, 193, 7, 1)',
+                            'rgba(220, 53, 69, 1)',
+                            'rgba(108, 117, 125, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(context.parsed);
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            console.log('Gráfico de importes creado');
+        } else {
+            console.error('No se encontró el canvas chartDistribucionImportes');
+        }
+    };
+    
+    // Función para descargar archivos desde un stream base64
+    window.downloadFileFromStream = async (fileName, base64String) => {
+        const blob = base64ToBlob(base64String, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+    
+    function base64ToBlob(base64, mimeType) {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new Blob([byteArray], {type: mimeType});
+    }
+
+    function redimensionarImagen(dataUrl, maxWidth, maxHeight) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = function() {
+                let width = img.width;
+                let height = img.height;
+
+                if (width <= maxWidth && height <= maxHeight) {
+                    resolve(dataUrl);
+                    return;
+                }
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width *= maxHeight / height;
+                        height = maxHeight;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                resolve(canvas.toDataURL('image/jpeg', 0.85));
+            };
+            img.onerror = reject;
+            img.src = dataUrl;
+        });
+    }
+</script>

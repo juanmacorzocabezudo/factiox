@@ -1,0 +1,125 @@
+@page "/proveedores/nuevo"
+@page "/proveedores/editar/{id:int}"
+@using FactioX.Models
+@using FactioX.Services
+@inject IProveedorService ProveedorService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container">
+    <div class="row mb-3">
+        <div class="col">
+            <h1>@(Id.HasValue ? "Editar" : "Nuevo") Proveedor</h1>
+        </div>
+    </div>
+
+    <EditForm Model="@proveedor" OnValidSubmit="GuardarProveedor">
+        <DataAnnotationsValidator />
+        
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="nombre" class="form-label">Nombre *</label>
+                        <InputText id="nombre" class="form-control" @bind-Value="proveedor.Nombre" />
+                        <ValidationMessage For="@(() => proveedor.Nombre)" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="nif" class="form-label">NIF/CIF</label>
+                        <InputText id="nif" class="form-control" @bind-Value="proveedor.NIF" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label for="direccion" class="form-label">Dirección</label>
+                        <InputText id="direccion" class="form-control" @bind-Value="proveedor.Direccion" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="codigoPostal" class="form-label">Código Postal</label>
+                        <InputText id="codigoPostal" class="form-control" @bind-Value="proveedor.CodigoPostal" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="ciudad" class="form-label">Ciudad</label>
+                        <InputText id="ciudad" class="form-control" @bind-Value="proveedor.Ciudad" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="provincia" class="form-label">Provincia</label>
+                        <InputText id="provincia" class="form-control" @bind-Value="proveedor.Provincia" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="pais" class="form-label">País</label>
+                        <InputText id="pais" class="form-control" @bind-Value="proveedor.Pais" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <InputText id="email" type="email" class="form-control" @bind-Value="proveedor.Email" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="telefono" class="form-label">Teléfono</label>
+                        <InputText id="telefono" class="form-control" @bind-Value="proveedor.Telefono" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-3">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Guardar
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="Cancelar">
+                <i class="bi bi-x-circle"></i> Cancelar
+            </button>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private Proveedor proveedor = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id.HasValue)
+        {
+            var proveedorExistente = await ProveedorService.ObtenerPorIdAsync(Id.Value);
+            if (proveedorExistente != null)
+            {
+                proveedor = proveedorExistente;
+            }
+            else
+            {
+                Navigation.NavigateTo("/proveedores");
+            }
+        }
+    }
+
+    private async Task GuardarProveedor()
+    {
+        if (Id.HasValue)
+        {
+            await ProveedorService.ActualizarAsync(Id.Value, proveedor);
+        }
+        else
+        {
+            await ProveedorService.CrearAsync(proveedor);
+        }
+        
+        Navigation.NavigateTo("/proveedores");
+    }
+
+    private void Cancelar()
+    {
+        Navigation.NavigateTo("/proveedores");
+    }
+}

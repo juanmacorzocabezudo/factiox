@@ -1,0 +1,444 @@
+﻿@using FactioX.Services
+@using FactioX.Models
+@inject IAuthService AuthService
+@inject IEmpresaService EmpresaService
+@inject NavigationManager Navigation
+@implements IDisposable
+@rendermode InteractiveServer
+
+<style>
+    .factiox-navbar {
+        background: #1a3a1a;
+        padding: 0.9rem 1rem 0.9rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        position: relative;
+    }
+    
+    .navbar-toggler {
+        display: none;
+        background: none;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 0.5rem 0.75rem;
+        cursor: pointer;
+        border-radius: 4px;
+        color: white;
+        font-size: 1.2rem;
+    }
+    
+    .navbar-toggler:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .factiox-menu-items {
+        display: flex;
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        gap: 0.1rem;
+        flex: 1;
+    }
+    
+    .factiox-menu-items .nav-item {
+        position: relative;
+    }
+    
+    .factiox-menu-items .dropdown-menu {
+        position: absolute !important;
+        top: 100% !important;
+        left: 0 !important;
+        margin: 0 !important;
+        margin-top: 0 !important;
+        min-width: 180px !important;
+        max-width: 200px !important;
+        background-color: #1a3a1a !important;
+        border: none !important;
+        border-radius: 0 0 6px 6px !important;
+        padding: 0.5rem 0 !important;
+        list-style: none !important;
+        z-index: 2000 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        transform: translateY(0) !important;
+    }
+
+    /* Bootstrap (Popper) añade un spacer por defecto; lo anulamos para que quede pegado al navbar */
+    .factiox-menu-items .dropdown-menu[data-bs-popper] {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        top: 100% !important;
+        inset: auto auto auto 0 !important;
+        transform: translate(0, 0) !important;
+    }
+    
+    .factiox-menu-items .dropdown-item {
+        padding: 0.6rem 1rem !important;
+        font-size: 0.85rem !important;
+        color: white !important;
+        display: flex !important;
+        align-items: center !important;
+        text-decoration: none !important;
+        transition: all 0.2s !important;
+        background-color: transparent !important;
+        border: none !important;
+    }
+    
+    .factiox-menu-items .dropdown-item:hover {
+        background-color: rgba(76, 175, 80, 0.3) !important;
+        padding-left: 1.2rem !important;
+    }
+    
+    .factiox-menu-items .dropdown-item .bi {
+        width: 0.9rem !important;
+        height: 0.9rem !important;
+        margin-right: 0.5rem !important;
+    }
+    
+    .factiox-user-section {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        padding-left: 1rem;
+        border-left: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .factiox-user-section .user-name {
+        color: white;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+    
+    .factiox-logout-btn {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        border-radius: 4px;
+        background-color: rgba(255, 255, 255, 0.1);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        white-space: nowrap;
+        transition: all 0.2s;
+    }
+    
+    .factiox-logout-btn:hover {
+        background-color: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+    
+    .factiox-logout-btn .bi {
+        width: 0.9rem !important;
+        height: 0.9rem !important;
+    }
+    
+    /* Responsive Design para Móviles */
+    @@media (max-width: 992px) {
+        .factiox-navbar {
+            flex-wrap: wrap;
+            padding: 0.9rem 1rem;
+            align-items: center;
+        }
+        
+        .navbar-brand {
+            flex-shrink: 0;
+            order: 1;
+            display: flex;
+            align-items: center;
+        }
+        
+        .factiox-user-section {
+            flex-shrink: 0;
+            border-left: none;
+            padding-left: 0;
+            margin-left: auto;
+            order: 2;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .navbar-toggler {
+            display: block !important;
+            flex-shrink: 0;
+            margin-left: 0.8rem;
+            order: 3;
+        }
+        
+        .factiox-user-section .user-name {
+            display: none;
+        }
+        
+        .factiox-logout-btn {
+            font-size: 0.75rem;
+            padding: 0.35rem 0.7rem;
+            white-space: nowrap;
+        }
+        
+        .factiox-menu-items {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            gap: 0.35rem;
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            order: 4;
+        }
+        
+        @@keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 1000px;
+            }
+        }
+        
+        .factiox-menu-items.show {
+            display: flex !important;
+            animation: slideDown 0.3s ease-out;
+        }
+        
+        .factiox-menu-items .nav-item {
+            width: 100%;
+        }
+        
+        .factiox-menu-items .nav-link {
+            padding: 0.75rem 1rem !important;
+            width: 100%;
+            display: block;
+            border-radius: 4px;
+            text-align: left;
+            justify-content: flex-start;
+        }
+        
+        .factiox-menu-items .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .factiox-menu-items .dropdown-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 0.5rem;
+        }
+        
+        .factiox-menu-items .dropdown-toggle::after {
+            margin-left: auto;
+        }
+        
+        .factiox-menu-items .dropdown-menu {
+            position: static !important;
+            box-shadow: none !important;
+            background-color: rgba(0, 0, 0, 0.2) !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border-radius: 4px !important;
+            margin-left: 1.5rem !important;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.35s ease, padding 0.35s ease, margin 0.35s ease;
+        }
+        
+        .factiox-menu-items .dropdown-menu.show {
+            max-height: 600px;
+            padding: 0.5rem 0 !important;
+            margin: 0.25rem 0 0.25rem 1.5rem !important;
+        }
+        
+        .factiox-menu-items .dropdown-item {
+            padding: 0.65rem 1rem !important;
+            font-size: 0.85rem !important;
+        }
+    }
+    
+    @@media (max-width: 576px) {
+        .factiox-navbar {
+            padding: 0.7rem 0.8rem;
+        }
+        
+        .logo {
+            height: 28px;
+        }
+        
+        .navbar-toggler {
+            padding: 0.35rem 0.55rem;
+            font-size: 1rem;
+            margin-left: 0.5rem;
+        }
+        
+        .factiox-logout-btn {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.7rem;
+        }
+        
+        .factiox-menu-items .dropdown-menu.show {
+            margin-left: 1rem !important;
+        }
+    }
+</style>
+
+<nav class="navbar-container">
+    <div class="factiox-navbar">
+        <a class="navbar-brand" href="">
+            <img src="FacioX_FIN.png" alt="FactioX" class="logo" />
+        </a>
+        
+        <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu">
+            <span class="bi @(collapseNavMenu ? "bi-list" : "bi-x-lg")"></span>
+        </button>
+        
+        <ul class="factiox-menu-items @(collapseNavMenu ? "" : "show")">
+            <li class="nav-item">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                    <span class="bi bi-house-door-fill"></span> Inicio
+                </NavLink>
+            </li>
+            
+            @if (AuthService.Rol != Roles.Asesoria)
+            {
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownContactos" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <span class="bi bi-people-fill"></span> Contactos
+                    </a>
+                    <ul class="dropdown-menu" data-bs-display="static" aria-labelledby="navbarDropdownContactos">
+                        <li><a class="dropdown-item" href="clientes"><span class="bi bi-person-fill"></span> Clientes</a></li>
+                        <li><a class="dropdown-item" href="proveedores"><span class="bi bi-truck"></span> Proveedores</a></li>
+                    </ul>
+                </li>
+                
+                <li class="nav-item">
+                    <NavLink class="nav-link" href="productos">
+                        <span class="bi bi-box-seam-fill"></span> Productos/Servicios
+                    </NavLink>
+                </li>
+            }
+            
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownFinanzas" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span class="bi bi-cash-stack"></span> Finanzas
+                </a>
+                <ul class="dropdown-menu" data-bs-display="static" aria-labelledby="navbarDropdownFinanzas">
+                    <li><a class="dropdown-item" href="facturas-venta"><span class="bi bi-receipt"></span> Facturas Venta</a></li>
+                    <li><a class="dropdown-item" href="facturas-compra"><span class="bi bi-receipt-cutoff"></span> Facturas Compra</a></li>
+                    @if (AuthService.Rol != Roles.Asesoria)
+                    {
+                        <li><a class="dropdown-item" href="presupuestos"><span class="bi bi-file-earmark-text-fill"></span> Presupuestos</a></li>
+                        <li><hr class="dropdown-divider" style="border-color: rgba(255,255,255,0.2); margin: 0.5rem 0;" /></li>
+                        <li><a class="dropdown-item" href="gastos"><span class="bi bi-wallet2"></span> Gastos</a></li>
+                        <li><hr class="dropdown-divider" style="border-color: rgba(255,255,255,0.2); margin: 0.5rem 0;" /></li>
+                        <li><a class="dropdown-item" href="facturacion-masiva"><span class="bi bi-lightning-charge-fill"></span> Facturación Masiva</a></li>
+                        <li><a class="dropdown-item" href="verifactu"><span class="bi bi-shield-check"></span> Verifactu</a></li>
+                    }
+                </ul>
+            </li>
+            
+            @if (AuthService.Rol != Roles.Asesoria)
+            {
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownModulos" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <span class="bi bi-grid-3x3-gap-fill"></span> Módulos disponibles
+                    </a>
+                    <ul class="dropdown-menu" data-bs-display="static" aria-labelledby="navbarDropdownModulos">
+                        <li><a class="dropdown-item" href="modulo-no-disponible/Contabilidad"><span class="bi bi-calculator-fill"></span> Contabilidad</a></li>
+                        <li><a class="dropdown-item" href="modulo-no-disponible/TPV"><span class="bi bi-shop"></span> TPV</a></li>
+                        <li><a class="dropdown-item" href="modulo-no-disponible/Almacén"><span class="bi bi-box-fill"></span> Almacén</a></li>
+                        <li><a class="dropdown-item" href="modulo-no-disponible/Producción"><span class="bi bi-gear-wide-connected"></span> Producción</a></li>
+                    </ul>
+                </li>
+                
+                <li class="nav-item">
+                    <NavLink class="nav-link" href="configuracion">
+                        <span class="bi bi-gear-fill"></span> Configuración
+                    </NavLink>
+                </li>
+            }
+        </ul>
+        
+        <div class="factiox-user-section">
+            <a href="perfil" class="user-name text-decoration-none" style="cursor: pointer; transition: opacity 0.2s;" 
+               onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'" title="Ver mi perfil">
+                <span class="bi bi-person-circle"></span>
+                @AuthService.UsuarioActual
+            </a>
+            <button type="button" class="factiox-logout-btn" @onclick="CerrarSesionHandler">
+                <span class="bi bi-box-arrow-right"></span>
+                Cerrar sesión
+            </button>
+        </div>
+    </div>
+</nav>
+
+@code {
+    private string? empresaNombre;
+    private bool collapseNavMenu = true;
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthService.InicializarAsync();
+        AuthService.OnCambioAutenticacion += OnAuthChanged;
+        await CargarEmpresaAsync();
+        
+        // Cerrar menú al navegar
+        Navigation.LocationChanged += (s, e) => 
+        {
+            collapseNavMenu = true;
+            StateHasChanged();
+        };
+    }
+
+    private async Task CargarEmpresaAsync()
+    {
+        if (AuthService.EmpresaId.HasValue)
+        {
+            var empresa = await EmpresaService.ObtenerPorIdAsync(AuthService.EmpresaId.Value);
+            empresaNombre = empresa?.NombreComercial;
+        }
+        else
+        {
+            empresaNombre = null;
+        }
+    }
+
+    private void OnAuthChanged()
+    {
+        InvokeAsync(async () =>
+        {
+            await CargarEmpresaAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task CerrarSesionHandler()
+    {
+        try
+        {
+            await AuthService.CerrarSesionAsync();
+            Navigation.NavigateTo("/login", forceLoad: true);
+        }
+        catch (Exception)
+        {
+            Navigation.NavigateTo("/login", forceLoad: true);
+        }
+    }
+
+    public void Dispose()
+    {
+        AuthService.OnCambioAutenticacion -= OnAuthChanged;
+    }
+}

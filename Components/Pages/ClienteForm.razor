@@ -1,0 +1,319 @@
+@page "/clientes/nuevo"
+@page "/clientes/editar/{id:int}"
+@using FactioX.Models
+@using FactioX.Services
+@inject IClienteService ClienteService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>@(Id.HasValue ? "Editar Cliente" : "Nuevo Cliente")</h1>
+    <button class="btn btn-outline-secondary" @onclick="Cancelar">
+        <i class="bi bi-arrow-left"></i> Volver
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Tipo de Cliente *</label>
+                <InputSelect class="form-select" @bind-Value="cliente.Tipo">
+                    <option value="@TipoCliente.Particular">Particular</option>
+                    <option value="@TipoCliente.Empresa">Empresa</option>
+                    <option value="@TipoCliente.Agencia">Agencia</option>
+                </InputSelect>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">NIF/CIF *</label>
+                <InputText class="form-control" @bind-Value="cliente.NIF" />
+            </div>
+        </div>
+
+        @if (cliente.Tipo == TipoCliente.Particular)
+        {
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Nombre *</label>
+                    <InputText class="form-control" @bind-Value="cliente.Nombre" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Apellidos</label>
+                    <InputText class="form-control" @bind-Value="cliente.Apellidos" />
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Nombre de la Empresa *</label>
+                    <InputText class="form-control" @bind-Value="cliente.NombreEmpresa" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Persona de Contacto</label>
+                    <InputText class="form-control" @bind-Value="cliente.Nombre" />
+                </div>
+            </div>
+        }
+
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Dirección</label>
+                <InputText class="form-control" @bind-Value="cliente.Direccion" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Ciudad</label>
+                <InputText class="form-control" @bind-Value="cliente.Ciudad" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Código Postal</label>
+                <InputText class="form-control" @bind-Value="cliente.CodigoPostal" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Provincia</label>
+                <InputText class="form-control" @bind-Value="cliente.Provincia" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">País</label>
+                <InputSelect class="form-select" @bind-Value="cliente.Pais">
+                    <option value="ESP">España</option>
+                    <option value="FRA">Francia</option>
+                    <option value="PRT">Portugal</option>
+                    <option value="ITA">Italia</option>
+                    <option value="DEU">Alemania</option>
+                    <option value="GBR">Reino Unido</option>
+                    <option value="NLD">Países Bajos</option>
+                    <option value="BEL">Bélgica</option>
+                    <option value="LUX">Luxemburgo</option>
+                    <option value="IRL">Irlanda</option>
+                    <option value="DNK">Dinamarca</option>
+                    <option value="SWE">Suecia</option>
+                    <option value="FIN">Finlandia</option>
+                    <option value="AUT">Austria</option>
+                    <option value="POL">Polonia</option>
+                    <option value="CZE">República Checa</option>
+                    <option value="GRC">Grecia</option>
+                    <option value="HUN">Hungría</option>
+                    <option value="ROU">Rumanía</option>
+                    <option value="BGR">Bulgaria</option>
+                    <option value="HRV">Croacia</option>
+                    <option value="SVN">Eslovenia</option>
+                    <option value="SVK">Eslovaquia</option>
+                    <option value="EST">Estonia</option>
+                    <option value="LVA">Letonia</option>
+                    <option value="LTU">Lituania</option>
+                    <option value="MLT">Malta</option>
+                    <option value="CYP">Chipre</option>
+                    <option value="USA">Estados Unidos</option>
+                    <option value="CAN">Canadá</option>
+                    <option value="MEX">México</option>
+                    <option value="BRA">Brasil</option>
+                    <option value="ARG">Argentina</option>
+                    <option value="CHL">Chile</option>
+                    <option value="COL">Colombia</option>
+                    <option value="PER">Perú</option>
+                    <option value="VEN">Venezuela</option>
+                    <option value="CHN">China</option>
+                    <option value="JPN">Japón</option>
+                    <option value="KOR">Corea del Sur</option>
+                    <option value="IND">India</option>
+                    <option value="AUS">Australia</option>
+                    <option value="NZL">Nueva Zelanda</option>
+                    <option value="ZAF">Sudáfrica</option>
+                    <option value="MAR">Marruecos</option>
+                    <option value="TUN">Túnez</option>
+                    <option value="EGY">Egipto</option>
+                    <option value="CHE">Suiza</option>
+                    <option value="NOR">Noruega</option>
+                    <option value="ISL">Islandia</option>
+                    <option value="AND">Andorra</option>
+                </InputSelect>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Fax</label>
+                <InputText class="form-control" @bind-Value="cliente.Fax" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Teléfono *</label>
+                <InputText class="form-control" @bind-Value="cliente.Telefono" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Email (Facturación) *</label>
+                <InputText type="email" class="form-control" @bind-Value="cliente.Email" />
+                <small class="text-muted">Este email se usará para enviar las facturas</small>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Email Secundario</label>
+                <InputText type="email" class="form-control" @bind-Value="cliente.EmailSecundario" />
+                <small class="text-muted">Email adicional informativo</small>
+            </div>
+        </div>
+
+        <!-- Sección FacturaE -->
+        <hr class="my-4" />
+        <h5 class="mb-3"><i class="bi bi-file-earmark-text"></i> Datos para FacturaE</h5>
+        
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <div class="form-check">
+                    <InputCheckbox class="form-check-input" @bind-Value="cliente.ClienteFacturaE" id="clienteFacturaECheck" />
+                    <label class="form-check-label" for="clienteFacturaECheck">
+                        <strong>Cliente FacturaE</strong>
+                    </label>
+                    <small class="text-muted d-block">Marque esta opción para clientes que requieren facturación electrónica con validaciones completas (administraciones públicas, etc.)</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Tipo de Persona</label>
+                <InputSelect class="form-select" @bind-Value="cliente.TipoPersona">
+                    <option value="@TipoPersona.Fisica">Física</option>
+                    <option value="@TipoPersona.Juridica">Jurídica</option>
+                </InputSelect>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Tipo de Residencia</label>
+                <InputSelect class="form-select" @bind-Value="cliente.TipoResidencia">
+                    <option value="@TipoResidencia.Residente">Residente</option>
+                    <option value="@TipoResidencia.UnionEuropea">Unión Europea</option>
+                    <option value="@TipoResidencia.Extranjero">Extranjero</option>
+                </InputSelect>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Código INE</label>
+                <InputText class="form-control" @bind-Value="cliente.CodigoINE" placeholder="Para administraciones públicas" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Persona de Contacto (FacturaE)</label>
+                <InputText class="form-control" @bind-Value="cliente.PersonaContacto" />
+            </div>
+        </div>
+
+        <!-- Datos Financieros -->
+        <hr class="my-4" />
+        <h5 class="mb-3"><i class="bi bi-credit-card"></i> Datos Financieros</h5>
+        
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Cuenta Bancaria / IBAN</label>
+                <InputText class="form-control" @bind-Value="cliente.CuentaBancaria" placeholder="ES00 0000 0000 00 0000000000" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Forma de Pago</label>
+                <InputSelect class="form-select" @bind-Value="cliente.FormaPago">
+                    <option value="">-- Selecciona --</option>
+                    <option value="@FormaPago.Efectivo">Efectivo</option>
+                    <option value="@FormaPago.Transferencia">Transferencia</option>
+                    <option value="@FormaPago.TarjetaCredito">Tarjeta Crédito</option>
+                    <option value="@FormaPago.TarjetaDebito">Tarjeta Débito</option>
+                    <option value="@FormaPago.Bizum">Bizum</option>
+                    <option value="@FormaPago.Domiciliacion">Domiciliación</option>
+                </InputSelect>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Límite de Crédito (€)</label>
+                <InputNumber class="form-control" @bind-Value="cliente.LimiteCredito" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Días de Pago</label>
+                <InputNumber class="form-control" @bind-Value="cliente.DiasPago" placeholder="30, 60, 90..." />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Contacto Adicional</label>
+                <InputText class="form-control" @bind-Value="cliente.Contacto" />
+            </div>
+        </div>
+
+        <div class="form-check mb-3">
+            <InputCheckbox class="form-check-input" @bind-Value="cliente.Activo" id="activoCheck" />
+            <label class="form-check-label" for="activoCheck">
+                Cliente activo
+            </label>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary" @onclick="GuardarCliente">
+                <i class="bi bi-save"></i> Guardar
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="Cancelar">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private Cliente cliente = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id.HasValue)
+        {
+            var clienteExistente = await ClienteService.ObtenerPorIdAsync(Id.Value);
+            if (clienteExistente != null)
+            {
+                cliente = clienteExistente;
+            }
+            else
+            {
+                Navigation.NavigateTo("/clientes");
+            }
+        }
+        else
+        {
+            cliente = new Cliente 
+            { 
+                FechaRegistro = DateTime.Now, 
+                Activo = true 
+            };
+        }
+    }
+
+    private async Task GuardarCliente()
+    {
+        if (Id.HasValue)
+        {
+            await ClienteService.ActualizarAsync(Id.Value, cliente);
+        }
+        else
+        {
+            await ClienteService.CrearAsync(cliente);
+        }
+        
+        Navigation.NavigateTo("/clientes");
+    }
+
+    private void Cancelar()
+    {
+        Navigation.NavigateTo("/clientes");
+    }
+}

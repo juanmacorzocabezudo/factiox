@@ -1,0 +1,1248 @@
+@page "/clientes"
+@using FactioX.Models
+@using FactioX.Services
+@using FactioX.Data
+@using Microsoft.EntityFrameworkCore
+@inject IClienteService ClienteService
+@inject IFacturaService FacturaService
+@inject IProductoService ProductoService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject ISEPAService SEPAService
+@inject ITenantService TenantService
+@inject ApplicationDbContext DbContext
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="mb-3">
+        <button class="btn btn-primary" @onclick="AbrirModalNuevoCliente">
+            <i class="bi bi-plus-circle"></i> Nuevo Cliente
+        </button>
+    </div>
+
+    @if (clientes != null)
+    {
+        <!-- Estadísticas -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <h6>Total Clientes</h6>
+                        <h3>@clientes.Count</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h6>Particulares</h6>
+                        <h3>@clientes.Count(c => c.Tipo == TipoCliente.Particular)</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h6>Empresas</h6>
+                        <h3>@clientes.Count(c => c.Tipo == TipoCliente.Empresa)</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <h6>Agencias</h6>
+                        <h3>@clientes.Count(c => c.Tipo == TipoCliente.Agencia)</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" placeholder="Buscar por nombre, NIF o email..." @bind="Busqueda" @bind:event="oninput" />
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" @bind="FiltroTipo">
+                            <option value="">Todos los tipos</option>
+                            <option value="Particular">Particulares</option>
+                            <option value="Empresa">Empresas</option>
+                            <option value="Agencia">Agencias</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" @bind="FiltroEstado">
+                            <option value="">Todos los estados</option>
+                            <option value="true">Activos</option>
+                            <option value="false">Inactivos</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!TodosLosFiltrados.Any())
+        {
+            <div class="alert alert-info">
+                No hay clientes que coincidan con los filtros.
+            </div>
+        }
+        else
+        {
+            <!-- Lista de clientes -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th>Nombre/Empresa</th>
+                                    <th>NIF/CIF</th>
+                                    <th>Contacto</th>
+                                    <th>Ciudad</th>
+                                    <th>Registro</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var cliente in ClientesFiltrados)
+                                {
+                                    var clienteId = cliente.Id;
+                                    <tr @ondblclick="() => AbrirModalEditarCliente(clienteId)" style="cursor: pointer;">
+                                        <td>
+                                            <span class="badge @ObtenerClaseTipo(cliente.Tipo)">
+                                                @cliente.Tipo
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <strong>
+                                                @if (cliente.Tipo == TipoCliente.Particular)
+                                                {
+                                                    @($"{cliente.Nombre} {cliente.Apellidos}")
+                                                }
+                                                else
+                                                {
+                                                    @cliente.NombreEmpresa
+                                                }
+                                            </strong>
+                                            @if (cliente.Tipo != TipoCliente.Particular && !string.IsNullOrEmpty(cliente.Nombre))
+                                            {
+                                                <br />
+                                                <small class="text-muted">Contacto: @cliente.Nombre</small>
+                                            }
+                                        </td>
+                                        <td>@cliente.NIF</td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(cliente.Email))
+                                            {
+                                                <div><i class="bi bi-envelope"></i> @cliente.Email</div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(cliente.Telefono))
+                                            {
+                                                <div><i class="bi bi-telephone"></i> @cliente.Telefono</div>
+                                            }
+                                        </td>
+                                        <td>@cliente.Ciudad</td>
+                                        <td>@cliente.FechaRegistro.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <span class="badge @(cliente.Activo ? "bg-success" : "bg-secondary")">
+                                                @(cliente.Activo ? "Activo" : "Inactivo")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => AbrirModalEditarCliente(clienteId)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarCliente(clienteId)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Paginación -->
+                    @if (TotalPaginas > 1)
+                    {
+                        <div class="d-flex justify-content-between align-items-center mt-3 px-3 pb-3">
+                            <div class="text-muted">
+                                Mostrando @((paginaActual - 1) * elementosPorPagina + 1) - @Math.Min(paginaActual * elementosPorPagina, TodosLosFiltrados.Count()) de @TodosLosFiltrados.Count() clientes
+                            </div>
+                            <nav>
+                                <ul class="pagination mb-0">
+                                    <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                                        <button class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" disabled="@(paginaActual == 1)">
+                                            <i class="bi bi-chevron-left"></i> Anterior
+                                        </button>
+                                    </li>
+                                    
+                                    @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+                                    {
+                                        var pagina = i;
+                                        <li class="page-item @(paginaActual == pagina ? "active" : "")">
+                                            <button class="page-link" @onclick="() => CambiarPagina(pagina)">@pagina</button>
+                                        </li>
+                                    }
+                                    
+                                    <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                                        <button class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" disabled="@(paginaActual == TotalPaginas)">
+                                            Siguiente <i class="bi bi-chevron-right"></i>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <p><em>Cargando...</em></p>
+    }
+</div>
+
+<!-- Modal de Cliente -->
+@if (mostrarModal && clienteEditando != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <!-- Botones fijos en la parte superior -->
+                <div class="modal-header bg-light sticky-top" style="z-index: 1050;">
+                    <h5 class="modal-title">@(clienteEditando.Id > 0 ? "Editar Cliente" : "Nuevo Cliente")</h5>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-primary" @onclick="GuardarCliente">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarModal">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Tipo de Cliente *</label>
+                            <InputSelect class="form-select" @bind-Value="clienteEditando.Tipo">
+                                <option value="@TipoCliente.Particular">Particular</option>
+                                <option value="@TipoCliente.Empresa">Empresa</option>
+                                <option value="@TipoCliente.Agencia">Agencia</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">NIF/CIF *</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.NIF" />
+                        </div>
+                    </div>
+
+                    @if (clienteEditando.Tipo == TipoCliente.Particular)
+                    {
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre *</label>
+                                <InputText class="form-control" @bind-Value="clienteEditando.Nombre" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Apellidos</label>
+                                <InputText class="form-control" @bind-Value="clienteEditando.Apellidos" />
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nombre de la Empresa *</label>
+                                <InputText class="form-control" @bind-Value="clienteEditando.NombreEmpresa" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Persona de Contacto</label>
+                                <InputText class="form-control" @bind-Value="clienteEditando.Nombre" />
+                            </div>
+                        </div>
+                    }
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Dirección</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.Direccion" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Ciudad</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.Ciudad" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Código Postal</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.CodigoPostal" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Provincia</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.Provincia" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">País</label>
+                            <InputSelect class="form-select" @bind-Value="clienteEditando.Pais">
+                                <option value="ESP">España</option>
+                                <option value="FRA">Francia</option>
+                                <option value="PRT">Portugal</option>
+                                <option value="ITA">Italia</option>
+                                <option value="DEU">Alemania</option>
+                                <option value="GBR">Reino Unido</option>
+                                <option value="NLD">Países Bajos</option>
+                                <option value="BEL">Bélgica</option>
+                                <option value="LUX">Luxemburgo</option>
+                                <option value="IRL">Irlanda</option>
+                                <option value="DNK">Dinamarca</option>
+                                <option value="SWE">Suecia</option>
+                                <option value="FIN">Finlandia</option>
+                                <option value="AUT">Austria</option>
+                                <option value="POL">Polonia</option>
+                                <option value="CZE">República Checa</option>
+                                <option value="GRC">Grecia</option>
+                                <option value="HUN">Hungría</option>
+                                <option value="ROU">Rumanía</option>
+                                <option value="BGR">Bulgaria</option>
+                                <option value="HRV">Croacia</option>
+                                <option value="SVN">Eslovenia</option>
+                                <option value="SVK">Eslovaquia</option>
+                                <option value="EST">Estonia</option>
+                                <option value="LVA">Letonia</option>
+                                <option value="LTU">Lituania</option>
+                                <option value="MLT">Malta</option>
+                                <option value="CYP">Chipre</option>
+                                <option value="USA">Estados Unidos</option>
+                                <option value="CAN">Canadá</option>
+                                <option value="MEX">México</option>
+                                <option value="BRA">Brasil</option>
+                                <option value="ARG">Argentina</option>
+                                <option value="CHL">Chile</option>
+                                <option value="COL">Colombia</option>
+                                <option value="PER">Perú</option>
+                                <option value="VEN">Venezuela</option>
+                                <option value="CHN">China</option>
+                                <option value="JPN">Japón</option>
+                                <option value="KOR">Corea del Sur</option>
+                                <option value="IND">India</option>
+                                <option value="AUS">Australia</option>
+                                <option value="NZL">Nueva Zelanda</option>
+                                <option value="ZAF">Sudáfrica</option>
+                                <option value="MAR">Marruecos</option>
+                                <option value="TUN">Túnez</option>
+                                <option value="EGY">Egipto</option>
+                                <option value="CHE">Suiza</option>
+                                <option value="NOR">Noruega</option>
+                                <option value="ISL">Islandia</option>
+                                <option value="AND">Andorra</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Fax</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.Fax" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Teléfono *</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.Telefono" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email (Facturación) *</label>
+                            <InputText type="email" class="form-control" @bind-Value="clienteEditando.Email" />
+                            <small class="text-muted">Este email se usará para enviar las facturas</small>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Email Secundario</label>
+                            <InputText type="email" class="form-control" @bind-Value="clienteEditando.EmailSecundario" />
+                            <small class="text-muted">Email adicional informativo</small>
+                        </div>
+                    </div>
+
+                    <!-- Sección FacturaE -->
+                    <hr class="my-4" />
+                    <h5 class="mb-3"><i class="bi bi-file-earmark-text"></i> Datos para FacturaE</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="form-check">
+                                <InputCheckbox class="form-check-input" @bind-Value="clienteEditando.ClienteFacturaE" id="clienteFacturaECheck" />
+                                <label class="form-check-label" for="clienteFacturaECheck">
+                                    <strong>Cliente FacturaE</strong>
+                                </label>
+                                <small class="text-muted d-block">Marque esta opción para clientes que requieren facturación electrónica con validaciones completas (administraciones públicas, etc.)</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Tipo de Persona</label>
+                            <InputSelect class="form-select" @bind-Value="clienteEditando.TipoPersona">
+                                <option value="@TipoPersona.Fisica">Física</option>
+                                <option value="@TipoPersona.Juridica">Jurídica</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Tipo de Residencia</label>
+                            <InputSelect class="form-select" @bind-Value="clienteEditando.TipoResidencia">
+                                <option value="@TipoResidencia.Residente">Residente</option>
+                                <option value="@TipoResidencia.UnionEuropea">Unión Europea</option>
+                                <option value="@TipoResidencia.Extranjero">Extranjero</option>
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Código INE</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.CodigoINE" placeholder="Para administraciones públicas" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Persona de Contacto (FacturaE)</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.PersonaContacto" />
+                        </div>
+                    </div>
+
+                    <!-- Datos Financieros -->
+                    <hr class="my-4" />
+                    <h5 class="mb-3"><i class="bi bi-credit-card"></i> Datos Financieros</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Cuenta Bancaria / IBAN</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.CuentaBancaria" placeholder="ES00 0000 0000 00 0000000000" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Forma de Pago</label>
+                            <InputSelect class="form-select" @bind-Value="clienteEditando.FormaPago">
+                                <option value="">-- Selecciona --</option>
+                                <option value="@FormaPago.Efectivo">Efectivo</option>
+                                <option value="@FormaPago.Transferencia">Transferencia</option>
+                                <option value="@FormaPago.TarjetaCredito">Tarjeta Crédito</option>
+                                <option value="@FormaPago.TarjetaDebito">Tarjeta Débito</option>
+                                <option value="@FormaPago.Bizum">Bizum</option>
+                                <option value="@FormaPago.Domiciliacion">Domiciliación</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Límite de Crédito (€)</label>
+                            <InputNumber class="form-control" @bind-Value="clienteEditando.LimiteCredito" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Días de Pago</label>
+                            <InputNumber class="form-control" @bind-Value="clienteEditando.DiasPago" placeholder="30, 60, 90..." />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Contacto Adicional</label>
+                            <InputText class="form-control" @bind-Value="clienteEditando.Contacto" />
+                        </div>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <InputCheckbox class="form-check-input" @bind-Value="clienteEditando.Activo" id="activoCheck" />
+                        <label class="form-check-label" for="activoCheck">
+                            Cliente activo
+                        </label>
+                    </div>
+
+                    <!-- Facturación Masiva / Recurrente -->
+                    <hr class="my-4" />
+                    <h5 class="mb-3"><i class="bi bi-lightning-charge"></i> Facturación Masiva</h5>
+                    
+                    <div class="alert" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+                        <i class="bi bi-info-circle"></i> Configura un concepto e importe para que este cliente aparezca en la facturación masiva
+                    </div>
+
+                    @if (clienteEditando.Id > 0)
+                    {
+                        <div class="card mb-3" style="border-color: #28a745;">
+                            <div class="card-header" style="background-color: #d4edda; color: #155724;">
+                                <i class="bi bi-gear-fill"></i> Configuración de Facturación
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Producto/Servicio Recurrente</label>
+                                        <InputSelect @bind-Value="clienteEditando.ProductoRecurrenteId" class="form-select">
+                                            <option value="">-- Seleccionar Producto --</option>
+                                            @if (productosDisponibles != null)
+                                            {
+                                                @foreach (var producto in productosDisponibles)
+                                                {
+                                                    <option value="@producto.Id">@producto.Nombre (@producto.PrecioUnitario.ToString("C2"))</option>
+                                                }
+                                            }
+                                        </InputSelect>
+                                        <small class="text-muted">Opcional: Deja vacío si usarás concepto manual</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Concepto Manual</label>
+                                        <InputText @bind-Value="clienteEditando.ConceptoRecurrente" class="form-control" 
+                                                   placeholder="Ej: Servicio de mantenimiento mensual" />
+                                        <small class="text-muted">Se usará si no hay producto seleccionado</small>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Importe Recurrente (€) *</label>
+                                        <InputNumber @bind-Value="clienteEditando.ImporteRecurrente" class="form-control" step="0.01" />
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Periodicidad *</label>
+                                        <InputSelect @bind-Value="clienteEditando.Periodicidad" class="form-select">
+                                            <option value="">-- Seleccionar --</option>
+                                            <option value="@PeriodicidadFacturacion.Mensual">Mensual</option>
+                                            <option value="@PeriodicidadFacturacion.Bimensual">Bimensual</option>
+                                            <option value="@PeriodicidadFacturacion.Trimestral">Trimestral</option>
+                                            <option value="@PeriodicidadFacturacion.Semestral">Semestral</option>
+                                            <option value="@PeriodicidadFacturacion.Anual">Anual</option>
+                                            <option value="@PeriodicidadFacturacion.Puntual">Puntual</option>
+                                        </InputSelect>
+                                    </div>
+                                </div>
+                                @if (clienteEditando.UltimaFacturacion.HasValue)
+                                {
+                                    <div class="alert alert-info mb-0">
+                                        <i class="bi bi-calendar-check"></i> Última facturación: <strong>@clienteEditando.UltimaFacturacion.Value.ToString("dd/MM/yyyy")</strong>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Historial de Pagos - solo para clientes existentes *@
+                    @if (clienteEditando.Id > 0)
+                    {
+                        <hr class="my-4" />
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5><i class="bi bi-cash-stack"></i> Historial de Pagos</h5>
+                            <button type="button" class="btn btn-outline-success" @onclick="() => AbrirPagosCliente(clienteEditando.Id)">
+                                <i class="bi bi-eye-fill"></i> Ver Pagos del Cliente
+                            </button>
+                        </div>
+
+                        @if (pagosCliente == null)
+                        {
+                            <p><em>Cargando pagos...</em></p>
+                        }
+                        else if (!pagosCliente.Any())
+                        {
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle"></i> Este cliente no tiene pagos registrados.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-success">
+                                <i class="bi bi-check-circle-fill"></i> 
+                                <strong>Total de pagos:</strong> @pagosCliente.Count | 
+                                <strong>Importe total:</strong> @pagosCliente.Sum(p => p.Importe).ToString("C2")
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal para Lista de Pagos (compartido) -->
+@if (mostrarModalListaPagos)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cash-coin"></i> 
+                        @if (facturaParaPago != null)
+                        {
+                            <span>Pagos de Factura @facturaParaPago.NumeroFactura</span>
+                        }
+                        else if (clienteSeleccionado != null)
+                        {
+                            <span>Pagos de Cliente: @clienteSeleccionado.Nombre</span>
+                        }
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalListaPagos"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Lista de pagos -->
+                    @if (pagosList?.Any() == true)
+                    {
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0"><i class="bi bi-list-check"></i> Historial de Pagos (@pagosList.Count)</h6>
+                                <button type="button" class="btn btn-sm btn-outline-success" @onclick="ExportarSEPA">
+                                    <i class="bi bi-file-earmark-arrow-down"></i> Exportar SEPA (Todos)
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Factura</th>
+                                                <th>Forma de Pago</th>
+                                                <th class="text-end">Importe</th>
+                                                <th>Referencia</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var pago in pagosList.OrderByDescending(p => p.FechaPago))
+                                            {
+                                                <tr style="cursor: pointer;" @onclick="() => AbrirDetallePago(pago.Id)">
+                                                    <td>@pago.FechaPago.ToString("dd/MM/yyyy")</td>
+                                                    <td><strong>@pago.Factura?.NumeroFactura</strong></td>
+                                                    <td>@pago.FormaPago</td>
+                                                    <td class="text-end"><strong>@pago.Importe.ToString("C2")</strong></td>
+                                                    <td>@pago.Referencia</td>
+                                                    <td @onclick:stopPropagation="true">
+                                                        <button class="btn btn-sm me-1" style="color: #5cb85c; border-color: #5cb85c;" @onclick="() => AbrirDetallePago(pago.Id)" title="Ver Detalle">
+                                                            <i class="bi bi-eye-fill"></i>
+                                                        </button>
+                                                        <button class="btn btn-sm" style="color: #28a745; border-color: #28a745;" @onclick="() => ExportarPagoXML(pago.Id)" title="Exportar XML">
+                                                            <i class="bi bi-file-earmark-code"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                        <tfoot>
+                                            <tr class="table-success">
+                                                <td colspan="3"><strong>Total Pagado:</strong></td>
+                                                <td class="text-end"><strong>@pagosList.Sum(p => p.Importe).ToString("C2")</strong></td>
+                                                <td colspan="2"></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+                            <i class="bi bi-info-circle"></i> No hay pagos registrados.
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalListaPagos">
+                        <i class="bi bi-x-circle"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+<!-- Modal para Detalle de Pago (compartido) -->
+@if (mostrarModalDetallePago && pagoDetalle != null)
+{
+    <div class="modal fade show" style="display: block; z-index: 1060;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #5cb85c; color: white;">
+                    <h5 class="modal-title">
+                        <i class="bi bi-receipt"></i> Detalle del Pago
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalDetallePago"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-light">
+                                    <strong><i class="bi bi-calendar-event"></i> Información General</strong>
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>Fecha de Pago:</strong> @pagoDetalle.FechaPago.ToString("dd/MM/yyyy")</p>
+                                    <p><strong>Forma de Pago:</strong> <span class="badge bg-success">@pagoDetalle.FormaPago</span></p>
+                                    <p><strong>Importe:</strong> <span class="h4 text-success">@pagoDetalle.Importe.ToString("C2")</span></p>
+                                    <p><strong>Referencia:</strong> @pagoDetalle.Referencia</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-light">
+                                    <strong><i class="bi bi-file-text"></i> Factura Relacionada</strong>
+                                </div>
+                                <div class="card-body">
+                                    <p><strong>Número:</strong> @pagoDetalle.Factura?.NumeroFactura</p>
+                                    <p><strong>Cliente:</strong> @pagoDetalle.Factura?.Cliente?.Nombre</p>
+                                    <p><strong>Total Factura:</strong> @pagoDetalle.Factura?.Total.ToString("C2")</p>
+                                    <p><strong>Estado:</strong> <span class="badge @ObtenerClaseEstado(pagoDetalle.Factura?.Estado ?? EstadoFactura.Borrador)" style="@ObtenerEstiloEstado(pagoDetalle.Factura?.Estado ?? EstadoFactura.Borrador)">@pagoDetalle.Factura?.Estado</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(pagoDetalle.Notas))
+                    {
+                        <div class="card">
+                            <div class="card-header bg-light">
+                                <strong><i class="bi bi-sticky"></i> Notas / Observaciones</strong>
+                            </div>
+                            <div class="card-body">
+                                <p>@pagoDetalle.Notas</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn" style="color: #28a745; border-color: #28a745;" @onclick="() => ExportarPagoXML(pagoDetalle.Id)">
+                        <i class="bi bi-file-earmark-code"></i> Exportar XML
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalDetallePago">
+                        <i class="bi bi-x-circle"></i> Cerrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show" style="z-index: 1055;"></div>
+}
+
+@code {
+    private List<Cliente>? clientes;
+    private List<PagoFactura>? pagosCliente;
+    private List<Producto>? productosDisponibles;
+    private string _busqueda = string.Empty;
+    private string _filtroTipo = string.Empty;
+    private string _filtroEstado = string.Empty;
+    private bool mostrarModal = false;
+    private int paginaActual = 1;
+    private int elementosPorPagina = 10;
+    private Cliente clienteEditando = new() 
+    { 
+        FechaRegistro = DateTime.Now, 
+        Activo = true,
+        Tipo = TipoCliente.Particular,
+        TipoPersona = TipoPersona.Fisica,
+        TipoResidencia = TipoResidencia.Residente
+    };
+
+    // Sistema modular de pagos (compartido con FacturasVenta)
+    private bool mostrarModalListaPagos = false;
+    private bool mostrarModalDetallePago = false;
+    private Factura? facturaParaPago;
+    private Cliente? clienteSeleccionado;
+    private List<PagoFactura>? pagosList;
+    private PagoFactura? pagoDetalle;
+
+    private string Busqueda
+    {
+        get => _busqueda;
+        set
+        {
+            if (_busqueda != value)
+            {
+                _busqueda = value;
+                paginaActual = 1;
+            }
+        }
+    }
+
+    private string FiltroTipo
+    {
+        get => _filtroTipo;
+        set
+        {
+            if (_filtroTipo != value)
+            {
+                _filtroTipo = value;
+                paginaActual = 1;
+            }
+        }
+    }
+
+    private string FiltroEstado
+    {
+        get => _filtroEstado;
+        set
+        {
+            if (_filtroEstado != value)
+            {
+                _filtroEstado = value;
+                paginaActual = 1;
+            }
+        }
+    }
+
+    private IEnumerable<Cliente> TodosLosFiltrados
+    {
+        get
+        {
+            if (clientes == null) return Enumerable.Empty<Cliente>();
+
+            var resultado = clientes.AsEnumerable();
+
+            // Filtro de búsqueda
+            if (!string.IsNullOrWhiteSpace(_busqueda))
+            {
+                resultado = resultado.Where(c =>
+                    (c.Nombre?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.Apellidos?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.NombreEmpresa?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.NIF?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.Email?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false)
+                );
+            }
+
+            // Filtro por tipo
+            if (!string.IsNullOrEmpty(_filtroTipo))
+            {
+                if (Enum.TryParse<TipoCliente>(_filtroTipo, out var tipo))
+                {
+                    resultado = resultado.Where(c => c.Tipo == tipo);
+                }
+            }
+
+            // Filtro por estado
+            if (!string.IsNullOrEmpty(_filtroEstado))
+            {
+                if (bool.TryParse(_filtroEstado, out var activo))
+                {
+                    resultado = resultado.Where(c => c.Activo == activo);
+                }
+            }
+
+            return resultado;
+        }
+    }
+
+    private IEnumerable<Cliente> ClientesFiltrados
+    {
+        get
+        {
+            return TodosLosFiltrados
+                .Skip((paginaActual - 1) * elementosPorPagina)
+                .Take(elementosPorPagina);
+        }
+    }
+
+    private int TotalPaginas => (int)Math.Ceiling((double)TodosLosFiltrados.Count() / elementosPorPagina);
+
+    private void CambiarPagina(int pagina)
+    {
+        if (pagina >= 1 && pagina <= TotalPaginas)
+        {
+            paginaActual = pagina;
+            StateHasChanged();
+        }
+    }
+
+    private void ReiniciarPaginacion()
+    {
+        paginaActual = 1;
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarClientes();
+        await CargarProductos();
+    }
+
+    private async Task CargarClientes()
+    {
+        clientes = await ClienteService.ObtenerTodosAsync();
+    }
+
+    private async Task CargarProductos()
+    {
+        productosDisponibles = await ProductoService.ObtenerTodosAsync();
+    }
+
+    private void AbrirModalNuevoCliente()
+    {
+        Console.WriteLine("AbrirModalNuevoCliente llamado");
+        clienteEditando = new Cliente 
+        { 
+            FechaRegistro = DateTime.Now, 
+            Activo = true,
+            Tipo = TipoCliente.Particular,
+            TipoPersona = TipoPersona.Fisica,
+            TipoResidencia = TipoResidencia.Residente
+        };
+        pagosCliente = null; // Limpiar pagos (no hay para clientes nuevos)
+        mostrarModal = true;
+        Console.WriteLine($"Modal abierto: {mostrarModal}");
+        StateHasChanged();
+    }
+
+    private async Task AbrirModalEditarCliente(int id)
+    {
+        Console.WriteLine($"AbrirModalEditarCliente llamado con ID: {id}");
+        var cliente = await ClienteService.ObtenerPorIdAsync(id);
+        Console.WriteLine($"Cliente obtenido: {cliente?.Nombre ?? "NULL"}");
+        Console.WriteLine($"Cliente EmpresaId: {cliente?.EmpresaId.ToString() ?? "NULL"}");
+        if (cliente != null)
+        {
+            clienteEditando = new Cliente
+            {
+                Id = cliente.Id,
+                Tipo = cliente.Tipo,
+                NIF = cliente.NIF,
+                Nombre = cliente.Nombre,
+                Apellidos = cliente.Apellidos,
+                NombreEmpresa = cliente.NombreEmpresa,
+                Direccion = cliente.Direccion,
+                Ciudad = cliente.Ciudad,
+                CodigoPostal = cliente.CodigoPostal,
+                Provincia = cliente.Provincia,
+                Pais = cliente.Pais,
+                Telefono = cliente.Telefono,
+                Email = cliente.Email,
+                EmailSecundario = cliente.EmailSecundario,
+                Fax = cliente.Fax,
+                ClienteFacturaE = cliente.ClienteFacturaE,
+                TipoPersona = cliente.TipoPersona,
+                TipoResidencia = cliente.TipoResidencia,
+                CodigoINE = cliente.CodigoINE,
+                PersonaContacto = cliente.PersonaContacto,
+                CuentaBancaria = cliente.CuentaBancaria,
+                BIC = cliente.BIC,
+                MandateReference = cliente.MandateReference,
+                MandateSignatureDate = cliente.MandateSignatureDate,
+                FormaPago = cliente.FormaPago,
+                LimiteCredito = cliente.LimiteCredito,
+                DiasPago = cliente.DiasPago,
+                Contacto = cliente.Contacto,
+                Activo = cliente.Activo,
+                FechaRegistro = cliente.FechaRegistro,
+                EmpresaId = cliente.EmpresaId,
+                
+                // Facturación Masiva
+                ProductoRecurrenteId = cliente.ProductoRecurrenteId,
+                ConceptoRecurrente = cliente.ConceptoRecurrente,
+                ImporteRecurrente = cliente.ImporteRecurrente,
+                Periodicidad = cliente.Periodicidad,
+                UltimaFacturacion = cliente.UltimaFacturacion,
+                FacturacionMasivaActiva = cliente.FacturacionMasivaActiva
+            };
+            
+            // Cargar pagos del cliente
+            await CargarPagosCliente(id);
+            
+            mostrarModal = true;
+            Console.WriteLine($"Modal abierto: {mostrarModal}");
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "No se pudo cargar el cliente. Puede que no tengas permisos para acceder a este cliente.");
+        }
+    }
+
+    private async Task GuardarCliente()
+    {
+        try
+        {
+            Console.WriteLine($"GuardarCliente - ID: {clienteEditando.Id}, Nombre: {clienteEditando.Nombre}");
+            
+            if (clienteEditando.Id > 0)
+            {
+                Console.WriteLine("Actualizando cliente...");
+                await ClienteService.ActualizarAsync(clienteEditando.Id, clienteEditando);
+            }
+            else
+            {
+                Console.WriteLine("Creando cliente...");
+                await ClienteService.CrearAsync(clienteEditando);
+            }
+            
+            Console.WriteLine("Cliente guardado exitosamente");
+            CerrarModal();
+            await CargarClientes();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al guardar cliente: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al guardar el cliente: {ex.Message}");
+        }
+    }
+
+    private void CerrarModal()
+    {
+        Console.WriteLine("CerrarModal llamado");
+        mostrarModal = false;
+        pagosCliente = null; // Limpiar pagos al cerrar
+        clienteEditando = new Cliente 
+        { 
+            FechaRegistro = DateTime.Now, 
+            Activo = true,
+            Tipo = TipoCliente.Particular,
+            TipoPersona = TipoPersona.Fisica,
+            TipoResidencia = TipoResidencia.Residente
+        };
+        Console.WriteLine($"Modal cerrado, mostrarModal: {mostrarModal}");
+        StateHasChanged();
+    }
+
+    private async Task EliminarCliente(int id)
+    {
+        var confirmado = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este cliente?");
+        if (confirmado)
+        {
+            await ClienteService.EliminarAsync(id);
+            await CargarClientes();
+            StateHasChanged();
+        }
+    }
+
+    private async Task CargarPagosCliente(int clienteId)
+    {
+        try
+        {
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (empresaId.HasValue)
+            {
+                pagosCliente = await DbContext.PagosFactura
+                    .Include(p => p.Factura)
+                    .Where(p => p.Factura != null && p.Factura.ClienteId == clienteId && p.Factura.EmpresaId == empresaId.Value)
+                    .ToListAsync();
+            }
+            else
+            {
+                pagosCliente = new List<PagoFactura>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar pagos del cliente: {ex.Message}");
+            pagosCliente = new List<PagoFactura>();
+        }
+    }
+
+    // Funciones del sistema modular de pagos
+    private async Task AbrirPagosCliente(int clienteId)
+    {
+        try
+        {
+            var cliente = await ClienteService.ObtenerPorIdAsync(clienteId);
+            if (cliente != null)
+            {
+                clienteSeleccionado = cliente;
+                facturaParaPago = null;
+                
+                // Cargar todos los pagos del cliente
+                var todasFacturas = await FacturaService.ObtenerTodosAsync();
+                var facturasCliente = todasFacturas.Where(f => f.ClienteId == clienteId && f.TipoFactura == TipoFactura.Venta).ToList();
+                
+                pagosList = new List<PagoFactura>();
+                foreach (var factura in facturasCliente)
+                {
+                    if (factura.Pagos != null && factura.Pagos.Any())
+                    {
+                        pagosList.AddRange(factura.Pagos);
+                    }
+                }
+                
+                mostrarModalListaPagos = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al cargar pagos: {ex.Message}");
+        }
+    }
+
+    private async Task AbrirDetallePago(int pagoId)
+    {
+        try
+        {
+            pagoDetalle = pagosList?.FirstOrDefault(p => p.Id == pagoId);
+            
+            if (pagoDetalle == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo cargar el detalle del pago");
+                return;
+            }
+            
+            mostrarModalDetallePago = true;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al abrir detalle: {ex.Message}");
+        }
+    }
+
+    private void CerrarModalDetallePago()
+    {
+        mostrarModalDetallePago = false;
+        pagoDetalle = null;
+    }
+
+    private void CerrarModalListaPagos()
+    {
+        mostrarModalListaPagos = false;
+        facturaParaPago = null;
+        clienteSeleccionado = null;
+        pagosList = null;
+    }
+
+    private async Task ExportarPagoXML(int pagoId)
+    {
+        try
+        {
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo obtener la empresa activa");
+                return;
+            }
+            
+            var xmlContent = await SEPAService.GenerarXMLSEPA(new List<int> { pagoId }, empresaId.Value);
+            var pago = pagosList?.FirstOrDefault(p => p.Id == pagoId) ?? pagoDetalle;
+            var fileName = $"Pago_{pago?.Factura?.NumeroFactura ?? "Unknown"}_{pago?.FechaPago:yyyyMMdd}.xml";
+            
+            await JSRuntime.InvokeVoidAsync("descargarArchivo", fileName, xmlContent, "text/xml");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar pago: {ex.Message}");
+        }
+    }
+
+    private async Task ExportarSEPA()
+    {
+        if (pagosList == null || !pagosList.Any())
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "No hay pagos para exportar");
+            return;
+        }
+
+        try
+        {
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo obtener la empresa activa");
+                return;
+            }
+            
+            var pagoIds = pagosList.Select(p => p.Id).ToList();
+            
+            var xmlContent = await SEPAService.GenerarXMLSEPA(pagoIds, empresaId.Value);
+            var fileName = $"SEPA_Cliente_{clienteSeleccionado?.NIF ?? "Unknown"}_{DateTime.Now:yyyyMMdd}.xml";
+            
+            await JSRuntime.InvokeVoidAsync("descargarArchivo", fileName, xmlContent, "text/xml");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar SEPA: {ex.Message}");
+        }
+    }
+
+    private string ObtenerClaseEstado(EstadoFactura estado)
+    {
+        return estado switch
+        {
+            EstadoFactura.Borrador => "bg-secondary text-white",
+            EstadoFactura.Emitida => "text-white",
+            EstadoFactura.Enviada => "text-white",
+            EstadoFactura.Pagada => "bg-success text-white",
+            EstadoFactura.Vencida => "text-dark",
+            EstadoFactura.Cancelada => "text-white",
+            _ => "bg-secondary text-white"
+        };
+    }
+
+    private string ObtenerEstiloEstado(EstadoFactura estado)
+    {
+        return estado switch
+        {
+            EstadoFactura.Borrador => "background-color: #8ab584;",
+            EstadoFactura.Emitida => "background-color: #1e7e34;",
+            EstadoFactura.Enviada => "background-color: #5cb85c;",
+            EstadoFactura.Pagada => "",
+            EstadoFactura.Vencida => "background-color: #a8d5ba;",
+            EstadoFactura.Cancelada => "background-color: #155724;",
+            _ => "background-color: #8ab584;"
+        };
+    }
+
+    private async Task ExportarSEPACliente()
+    {
+        try
+        {
+            if (pagosCliente == null || !pagosCliente.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No hay pagos para exportar");
+                return;
+            }
+
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo obtener la información de la empresa");
+                return;
+            }
+
+            // Verificar que el cliente tenga IBAN
+            if (string.IsNullOrEmpty(clienteEditando.CuentaBancaria))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El cliente no tiene cuenta bancaria (IBAN) configurada");
+                return;
+            }
+
+            var pagoIds = pagosCliente.Select(p => p.Id).ToList();
+            var xml = await SEPAService.GenerarXMLSEPA(pagoIds, empresaId.Value);
+            
+            var fecha = DateTime.Now.ToString("yyyyMMdd");
+            var nombreArchivo = $"SEPA_Cliente_{clienteEditando.NIF}_{fecha}.xml";
+            
+            await JSRuntime.InvokeVoidAsync("descargarArchivo", nombreArchivo, xml);
+            await JSRuntime.InvokeVoidAsync("alert", "Archivo SEPA generado correctamente");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al generar archivo SEPA: {ex.Message}");
+            Console.WriteLine($"Error detallado SEPA: {ex}");
+        }
+    }
+
+    private string ObtenerClaseTipo(TipoCliente tipo)
+    {
+        return tipo switch
+        {
+            TipoCliente.Particular => "bg-success",
+            TipoCliente.Empresa => "bg-primary",
+            TipoCliente.Agencia => "bg-warning",
+            _ => "bg-secondary"
+        };
+    }
+}
+

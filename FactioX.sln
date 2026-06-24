@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FactioX", "FactioX.csproj", "{5DCDF07D-95BA-4E09-7434-578709DEC037}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5DCDF07D-95BA-4E09-7434-578709DEC037}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5DCDF07D-95BA-4E09-7434-578709DEC037}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5DCDF07D-95BA-4E09-7434-578709DEC037}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5DCDF07D-95BA-4E09-7434-578709DEC037}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {05FD2AE7-E2C2-40F5-BFAB-E946BDC9AC12}
+	EndGlobalSection
+EndGlobal

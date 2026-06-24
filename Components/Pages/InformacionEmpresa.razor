@@ -1,0 +1,863 @@
+@page "/informacion-empresa"
+@using FactioX.Models
+@using FactioX.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using System.IO
+@inject IConfiguracionEmpresaService ConfiguracionService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Información de Empresa - FactioX</PageTitle>
+
+<div class="container-fluid mt-4">
+    @if (configuracion != null)
+    {
+        <div class="row justify-content-center mt-4">
+            <div class="col-md-10 col-lg-8">
+                <!-- Datos de la empresa -->
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-building"></i> Datos de la Empresa</h5>
+                    </div>
+                    <div class="card-body">
+                        <form @onsubmit="GuardarConfiguracion" @onsubmit:preventDefault>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Nombre de la Empresa *</label>
+                                    <input type="text" class="form-control" @bind="configuracion.NombreEmpresa" required />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">NIF/CIF *</label>
+                                    <input type="text" class="form-control" @bind="configuracion.NIF" required />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label">Dirección *</label>
+                                    <input type="text" class="form-control" @bind="configuracion.Direccion" required />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Ciudad *</label>
+                                    <input type="text" class="form-control" @bind="configuracion.Ciudad" required />
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Código Postal *</label>
+                                    <input type="text" class="form-control" @bind="configuracion.CodigoPostal" required />
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Provincia *</label>
+                                    <input type="text" class="form-control" @bind="configuracion.Provincia" required />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Teléfono *</label>
+                                    <input type="text" class="form-control" @bind="configuracion.Telefono" required />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Email *</label>
+                                    <input type="email" class="form-control" @bind="configuracion.Email" required />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Sitio Web</label>
+                                    <input type="text" class="form-control" @bind="configuracion.Web" placeholder="https://www.ejemplo.com" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">IBAN (para facturas)</label>
+                                    <input type="text" class="form-control" @bind="configuracion.IBAN" placeholder="ES00 0000 0000 0000 0000 0000" />
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Logo de la Empresa -->
+                <div class="card mb-4">
+                    <div class="card-header" style="background-color: #FF5722; color: white;">
+                        <h5 class="mb-0"><i class="bi bi-image"></i> Logo de la Empresa</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            <strong>Logo para Facturas:</strong> El logo aparecerá en el encabezado de todas las facturas PDF y documentos impresos. Se recomienda usar una imagen en formato .png o .jpg con fondo transparente.
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(configuracion.LogoRuta))
+                        {
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <div class="alert alert-success d-flex align-items-center justify-content-between">
+                                        <div>
+                                            <i class="bi bi-check-circle"></i> 
+                                            <strong>Logo configurado</strong>
+                                        </div>
+                                        <button class="btn btn-sm btn-danger" @onclick="EliminarLogo">
+                                            <i class="bi bi-trash"></i> Eliminar
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="col-md-8">
+                                    @if (File.Exists(Path.Combine(_webHostEnvironment.WebRootPath, configuracion.LogoRuta.TrimStart('/', '\\'))))
+                                    {
+                                        <div class="border p-3 text-center" style="background-color: #f8f9fa;">
+                                            <img src="@configuracion.LogoRuta" alt="Logo" style="max-height: 100px; max-width: 100%;" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i> 
+                                No hay ningún logo configurado. El logo aparecerá en las facturas impresas.
+                            </div>
+                        }
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Seleccionar Logo (.jpg, .png)</label>
+                                <InputFile OnChange="HandleLogoSelected" class="form-control" accept=".jpg,.jpeg,.png" />
+                                <small class="text-muted">Tamaño recomendado: 300x150 píxeles (máximo 2 MB)</small>
+                                @if (!string.IsNullOrEmpty(mensajeArchivoLogo))
+                                {
+                                    <div class="mt-2 text-info">
+                                        <i class="bi bi-file-earmark-check"></i> @mensajeArchivoLogo
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(errorLogo))
+                        {
+                            <div class="alert alert-danger mt-2">
+                                <i class="bi bi-exclamation-circle"></i> @errorLogo
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Datos FacturaE -->
+                <div class="card mb-4">
+                    <div class="card-header" style="background-color: #9C27B0; color: white;">
+                        <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Datos para FacturaE (Facturación Electrónica)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Tipo de Persona</label>
+                                <select class="form-select" @bind="configuracion.TipoPersona">
+                                    <option value="@TipoPersona.Fisica">Física</option>
+                                    <option value="@TipoPersona.Juridica">Jurídica</option>
+                                </select>
+                                <small class="text-muted">Normalmente "Jurídica" para empresas</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Tipo de Residencia</label>
+                                <select class="form-select" @bind="configuracion.TipoResidencia">
+                                    <option value="@TipoResidencia.Residente">Residente</option>
+                                    <option value="@TipoResidencia.UnionEuropea">Unión Europea</option>
+                                    <option value="@TipoResidencia.Extranjero">Extranjero</option>
+                                </select>
+                                <small class="text-muted">Normalmente "Residente" para empresas españolas</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Nombre Comercial</label>
+                                <input type="text" class="form-control" @bind="configuracion.NombreComercial" placeholder="Nombre comercial (opcional)" />
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Persona de Contacto</label>
+                                <input type="text" class="form-control" @bind="configuracion.PersonaContacto" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Código INE</label>
+                                <input type="text" class="form-control" @bind="configuracion.CodigoINE" placeholder="Para administraciones públicas" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">CNAE</label>
+                                <input type="text" class="form-control" @bind="configuracion.CNAE" placeholder="Código actividad económica" />
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Libro Registro</label>
+                                <input type="text" class="form-control" @bind="configuracion.LibroRegistro" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Registro Mercantil</label>
+                                <input type="text" class="form-control" @bind="configuracion.RegistroMercantil" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Hoja</label>
+                                <input type="text" class="form-control" @bind="configuracion.HojaRegistro" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Folio</label>
+                                <input type="text" class="form-control" @bind="configuracion.FolioRegistro" />
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Sección</label>
+                                <input type="text" class="form-control" @bind="configuracion.SeccionRegistro" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Tomo</label>
+                                <input type="text" class="form-control" @bind="configuracion.TomoRegistro" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Datos Adicionales</label>
+                                <input type="text" class="form-control" @bind="configuracion.DatosRegistroAdicionales" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Certificado Electrónico para FacturaE -->
+                <div class="card mb-4">
+                    <div class="card-header" style="background-color: #2196F3; color: white;">
+                        <h5 class="mb-0"><i class="bi bi-shield-lock"></i> Certificado Electrónico para FacturaE</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> 
+                            <strong>Certificado Digital:</strong> El certificado electrónico (.pfx o .p12) se utiliza para firmar digitalmente las facturas electrónicas en formato FacturaE. 
+                            Proporciona autenticidad y validez legal a las facturas.
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(configuracion.CertificadoRuta))
+                        {
+                            <div class="alert alert-success d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="bi bi-check-circle"></i> 
+                                    <strong>Certificado configurado:</strong> @System.IO.Path.GetFileName(configuracion.CertificadoRuta)
+                                </div>
+                                <button class="btn btn-sm btn-danger" @onclick="EliminarCertificado">
+                                    <i class="bi bi-trash"></i> Eliminar
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle"></i> 
+                                No hay ningún certificado configurado. Para exportar facturas a FacturaE con firma digital, debe cargar un certificado.
+                            </div>
+                        }
+
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label class="form-label">Archivo de Certificado (.pfx o .p12)</label>
+                                <InputFile OnChange="HandleCertificadoSelected" class="form-control" accept=".pfx,.p12" />
+                                <small class="text-muted">Seleccione su certificado digital en formato .pfx o .p12</small>
+                                @if (!string.IsNullOrEmpty(mensajeArchivo))
+                                {
+                                    <div class="mt-2 text-info">
+                                        <i class="bi bi-file-earmark-check"></i> @mensajeArchivo
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Contraseña del Certificado</label>
+                                <input type="password" class="form-control" @bind="configuracion.CertificadoPassword" placeholder="Contraseña" />
+                                <small class="text-muted">Contraseña para usar el certificado</small>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(errorCertificado))
+                        {
+                            <div class="alert alert-danger mt-2">
+                                <i class="bi bi-exclamation-circle"></i> @errorCertificado
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Configuración de facturación - Facturas de Venta -->
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="bi bi-receipt"></i> Configuración de Facturas de Venta</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-info-circle"></i> La serie de factura define el formato de numeración de tus facturas.
+                            </div>
+                            <div>
+                                <strong>Próxima factura:</strong> <code class="fs-5">@GenerarEjemploFactura()</code>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Serie de Factura *</label>
+                                <input type="text" class="form-control" @bind="configuracion.SerieFactura" maxlength="10" />
+                                <small class="text-muted">Ej: FAC, FV, FACT</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Número Actual</label>
+                                <input type="number" class="form-control" @bind="configuracion.NumeroFacturaActual" />
+                                <small class="text-muted">Próxima factura usará este número</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Longitud del Número</label>
+                                <input type="number" class="form-control" @bind="configuracion.LongitudNumeroFactura" min="3" max="8" />
+                                <small class="text-muted">Dígitos del número (ej: 4 = 0001)</small>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" @bind="configuracion.IncluirAñoEnSerie" id="incluirAño">
+                                    <label class="form-check-label" for="incluirAño">
+                                        Incluir año en la serie
+                                    </label>
+                                </div>
+                                <small class="text-muted">FAC-2025-0001</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuración de facturación - Facturas de Compra -->
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-receipt"></i> Configuración de Facturas de Compra</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-info-circle"></i> La serie de factura de compra define el formato de numeración de tus facturas de compra.
+                            </div>
+                            <div>
+                                <strong>Próxima factura:</strong> <code class="fs-5">@GenerarEjemploFacturaCompra()</code>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Serie de Factura Compra *</label>
+                                <input type="text" class="form-control" @bind="configuracion.SerieFacturaCompra" maxlength="10" />
+                                <small class="text-muted">Ej: FCOMP, FC, FCOM</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Número Actual</label>
+                                <input type="number" class="form-control" @bind="configuracion.NumeroFacturaCompraActual" />
+                                <small class="text-muted">Próxima factura usará este número</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Longitud del Número</label>
+                                <input type="number" class="form-control" @bind="configuracion.LongitudNumeroFacturaCompra" min="3" max="8" />
+                                <small class="text-muted">Dígitos del número (ej: 4 = 0001)</small>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" @bind="configuracion.IncluirAñoEnSerieCompra" id="incluirAñoCompra">
+                                    <label class="form-check-label" for="incluirAñoCompra">
+                                        Incluir año en la serie
+                                    </label>
+                                </div>
+                                <small class="text-muted">FCOMP-2025-0001</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuración general de facturación -->
+                <div class="card mb-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-gear"></i> Configuración General de Facturación</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">IVA por Defecto (%)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="configuracion.IVAPorDefecto" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Días de Vencimiento</label>
+                                <input type="number" class="form-control" @bind="configuracion.DiasVencimientoPorDefecto" />
+                                <small class="text-muted">Días para pagar la factura</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuración de presupuestos -->
+                <div class="card mb-4">
+                    <div class="card-header" style="background-color: #4CAF50; color: white;">
+                        <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Configuración de Presupuestos</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-info-circle"></i> La serie de presupuesto define el formato de numeración de tus presupuestos.
+                            </div>
+                            <div>
+                                <strong>Próximo presupuesto:</strong> <code class="fs-5">@GenerarEjemploPresupuesto()</code>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Serie de Presupuesto *</label>
+                                <input type="text" class="form-control" @bind="configuracion.SeriePresupuesto" maxlength="10" />
+                                <small class="text-muted">Ej: PRES, PRE, PRESUP</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Número Actual</label>
+                                <input type="number" class="form-control" @bind="configuracion.NumeroPresupuestoActual" />
+                                <small class="text-muted">Próximo presupuesto usará este número</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Longitud del Número</label>
+                                <input type="number" class="form-control" @bind="configuracion.LongitudNumeroPresupuesto" min="3" max="8" />
+                                <small class="text-muted">Dígitos del número (ej: 4 = 0001)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Datos Financieros -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header" style="background-color: #FF9800; color: white;">
+                        <h5 class="mb-0"><i class="bi bi-credit-card"></i> Datos Financieros y Contacto</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Cuenta Bancaria</label>
+                                <input type="text" class="form-control" @bind="configuracion.CuentaBancaria" placeholder="Número de cuenta" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Forma de Pago</label>
+                                <input type="text" class="form-control" @bind="configuracion.FormaPago" placeholder="Ej: Transferencia, Efectivo" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Límite de Crédito</label>
+                                <input type="number" step="0.01" class="form-control" @bind="configuracion.LimiteCredito" placeholder="0.00" />
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Días de Pago</label>
+                                <input type="number" class="form-control" @bind="configuracion.DiasPago" placeholder="30" />
+                                <small class="text-muted">Días para realizar pagos a proveedores</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Contacto</label>
+                                <input type="text" class="form-control" @bind="configuracion.Contacto" placeholder="Nombre del contacto principal" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mb-4">
+                    <button class="btn btn-primary btn-lg" @onclick="GuardarConfiguracion">
+                        <i class="bi bi-save"></i> Guardar Configuración
+                    </button>
+                    <button class="btn btn-secondary btn-lg" @onclick="Volver">
+                        <i class="bi bi-arrow-left"></i> Volver
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ConfiguracionEmpresa? configuracion;
+    private string? mensajeArchivo;
+    private string? errorCertificado;
+    private IBrowserFile? certificadoFile;
+    private string? mensajeArchivoLogo;
+    private string? errorLogo;
+    private IBrowserFile? logoFile;
+    private const long maxFileSize = 1024 * 1024 * 5; // 5 MB
+    private const long maxLogoSize = 1024 * 1024 * 2; // 2 MB
+
+    [Inject]
+    private IWebHostEnvironment _webHostEnvironment { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarConfiguracion();
+    }
+
+    private async Task CargarConfiguracion()
+    {
+        // Cargar la configuración de la empresa del usuario actual
+        configuracion = await ConfiguracionService.ObtenerPorEmpresaIdAsync(AuthService.EmpresaId ?? 0);
+        
+        if (configuracion == null && AuthService.EmpresaId.HasValue)
+        {
+            // Crear configuración por defecto si no existe
+            configuracion = new ConfiguracionEmpresa
+            {
+                EmpresaId = AuthService.EmpresaId.Value,
+                NombreEmpresa = "",
+                NIF = "",
+                Direccion = "",
+                Ciudad = "",
+                CodigoPostal = "",
+                Provincia = "",
+                Telefono = "",
+                Email = "",
+                SerieFactura = "FAC",
+                NumeroFacturaActual = 1,
+                LongitudNumeroFactura = 4,
+                IncluirAñoEnSerie = true,
+                SerieFacturaCompra = "FCOMP",
+                NumeroFacturaCompraActual = 1,
+                LongitudNumeroFacturaCompra = 4,
+                IncluirAñoEnSerieCompra = true,
+                SeriePresupuesto = "PRES",
+                NumeroPresupuestoActual = 1,
+                LongitudNumeroPresupuesto = 4,
+                IVAPorDefecto = 21m,
+                DiasVencimientoPorDefecto = 30,
+                TipoPersona = TipoPersona.Juridica,
+                TipoResidencia = TipoResidencia.Residente,
+                Pais = "ESP"
+            };
+        }
+    }
+
+    private async Task GuardarConfiguracion()
+    {
+        if (configuracion == null) return;
+
+        try
+        {
+            // Guardar logo si se ha seleccionado uno nuevo
+            if (logoFile != null)
+            {
+                await GuardarLogo();
+            }
+
+            // Guardar certificado si se ha seleccionado uno nuevo
+            if (certificadoFile != null)
+            {
+                await GuardarCertificado();
+            }
+
+            if (configuracion.Id == 0)
+            {
+                await ConfiguracionService.CrearAsync(configuracion);
+            }
+            else
+            {
+                await ConfiguracionService.ActualizarAsync(configuracion);
+            }
+
+            await JSRuntime.InvokeVoidAsync("alert", "Configuración guardada correctamente");
+            await CargarConfiguracion();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}");
+        }
+    }
+
+    private void Volver()
+    {
+        Navigation.NavigateTo("/configuracion");
+    }
+
+    private string GenerarEjemploFactura()
+    {
+        if (configuracion == null) return "";
+        
+        var numero = (configuracion.NumeroFacturaActual + 1).ToString($"D{configuracion.LongitudNumeroFactura}");
+        
+        if (configuracion.IncluirAñoEnSerie)
+        {
+            return $"{configuracion.SerieFactura}-{DateTime.Now.Year}-{numero}";
+        }
+        
+        return $"{configuracion.SerieFactura}-{numero}";
+    }
+
+    private string GenerarEjemploFacturaCompra()
+    {
+        if (configuracion == null) return "";
+        
+        var numero = (configuracion.NumeroFacturaCompraActual + 1).ToString($"D{configuracion.LongitudNumeroFacturaCompra}");
+        
+        if (configuracion.IncluirAñoEnSerieCompra)
+        {
+            return $"{configuracion.SerieFacturaCompra}-{DateTime.Now.Year}-{numero}";
+        }
+        
+        return $"{configuracion.SerieFacturaCompra}-{numero}";
+    }
+
+    private string GenerarEjemploPresupuesto()
+    {
+        if (configuracion == null) return "";
+        
+        var numero = (configuracion.NumeroPresupuestoActual + 1).ToString($"D{configuracion.LongitudNumeroPresupuesto}");
+        return $"{configuracion.SeriePresupuesto}-{DateTime.Now.Year}-{numero}";
+    }
+
+    private void HandleCertificadoSelected(InputFileChangeEventArgs e)
+    {
+        errorCertificado = null;
+        mensajeArchivo = null;
+
+        try
+        {
+            certificadoFile = e.File;
+
+            // Validar extensión
+            var extension = Path.GetExtension(certificadoFile.Name).ToLower();
+            if (extension != ".pfx" && extension != ".p12")
+            {
+                errorCertificado = "El archivo debe tener extensión .pfx o .p12";
+                certificadoFile = null;
+                return;
+            }
+
+            // Validar tamaño
+            if (certificadoFile.Size > maxFileSize)
+            {
+                errorCertificado = $"El archivo no puede superar {maxFileSize / (1024 * 1024)} MB";
+                certificadoFile = null;
+                return;
+            }
+
+            mensajeArchivo = $"Archivo seleccionado: {certificadoFile.Name} ({certificadoFile.Size / 1024} KB)";
+        }
+        catch (Exception ex)
+        {
+            errorCertificado = $"Error al seleccionar el archivo: {ex.Message}";
+            certificadoFile = null;
+        }
+    }
+
+    private async Task GuardarCertificado()
+    {
+        if (certificadoFile == null || configuracion == null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Crear directorio para certificados si no existe
+            var rutaCertificados = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "certificados");
+            if (!Directory.Exists(rutaCertificados))
+            {
+                Directory.CreateDirectory(rutaCertificados);
+            }
+
+            // Generar nombre único para el archivo
+            var nombreArchivo = $"cert_{configuracion.EmpresaId}_{DateTime.Now:yyyyMMddHHmmss}{Path.GetExtension(certificadoFile.Name)}";
+            var rutaCompleta = Path.Combine(rutaCertificados, nombreArchivo);
+
+            // Eliminar certificado anterior si existe
+            if (!string.IsNullOrEmpty(configuracion.CertificadoRuta) && File.Exists(configuracion.CertificadoRuta))
+            {
+                File.Delete(configuracion.CertificadoRuta);
+            }
+
+            // Guardar el archivo
+            await using FileStream fs = new(rutaCompleta, FileMode.Create);
+            await certificadoFile.OpenReadStream(maxFileSize).CopyToAsync(fs);
+
+            // Actualizar configuración
+            configuracion.CertificadoRuta = rutaCompleta;
+            
+            mensajeArchivo = "Certificado guardado correctamente";
+            certificadoFile = null;
+        }
+        catch (Exception ex)
+        {
+            errorCertificado = $"Error al guardar el certificado: {ex.Message}";
+        }
+    }
+
+    private async Task EliminarCertificado()
+    {
+        if (configuracion == null || string.IsNullOrEmpty(configuracion.CertificadoRuta))
+        {
+            return;
+        }
+
+        try
+        {
+            var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar el certificado electrónico?");
+            if (!confirmar)
+            {
+                return;
+            }
+
+            // Eliminar archivo físico si existe
+            if (File.Exists(configuracion.CertificadoRuta))
+            {
+                File.Delete(configuracion.CertificadoRuta);
+            }
+
+            // Limpiar configuración
+            configuracion.CertificadoRuta = null;
+            configuracion.CertificadoPassword = null;
+
+            await ConfiguracionService.ActualizarAsync(configuracion);
+            
+            mensajeArchivo = "Certificado eliminado correctamente";
+            await JSRuntime.InvokeVoidAsync("alert", "Certificado eliminado correctamente");
+        }
+        catch (Exception ex)
+        {
+            errorCertificado = $"Error al eliminar el certificado: {ex.Message}";
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al eliminar: {ex.Message}");
+        }
+    }
+
+    // Funciones para manejo del logo
+    private void HandleLogoSelected(InputFileChangeEventArgs e)
+    {
+        errorLogo = null;
+        mensajeArchivoLogo = null;
+
+        try
+        {
+            logoFile = e.File;
+
+            // Validar extensión
+            var extension = Path.GetExtension(logoFile.Name).ToLower();
+            if (extension != ".jpg" && extension != ".jpeg" && extension != ".png")
+            {
+                errorLogo = "El archivo debe ser una imagen .jpg, .jpeg o .png";
+                logoFile = null;
+                return;
+            }
+
+            // Validar tamaño
+            if (logoFile.Size > maxLogoSize)
+            {
+                errorLogo = $"El archivo no puede superar {maxLogoSize / (1024 * 1024)} MB";
+                logoFile = null;
+                return;
+            }
+
+            mensajeArchivoLogo = $"Archivo seleccionado: {logoFile.Name} ({logoFile.Size / 1024} KB)";
+        }
+        catch (Exception ex)
+        {
+            errorLogo = $"Error al seleccionar el archivo: {ex.Message}";
+            logoFile = null;
+        }
+    }
+
+    private async Task GuardarLogo()
+    {
+        if (logoFile == null || configuracion == null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Crear directorio para logos si no existe
+            var rutaLogos = Path.Combine(_webHostEnvironment.WebRootPath, "logos");
+            if (!Directory.Exists(rutaLogos))
+            {
+                Directory.CreateDirectory(rutaLogos);
+            }
+
+            // Generar nombre único para el archivo
+            var extension = Path.GetExtension(logoFile.Name);
+            var nombreArchivo = $"logo_{configuracion.EmpresaId}_{DateTime.Now:yyyyMMddHHmmss}{extension}";
+            var rutaCompleta = Path.Combine(rutaLogos, nombreArchivo);
+
+            // Eliminar logo anterior si existe
+            if (!string.IsNullOrEmpty(configuracion.LogoRuta))
+            {
+                var rutaAnterior = Path.Combine(_webHostEnvironment.WebRootPath, configuracion.LogoRuta.TrimStart('/', '\\'));
+                if (File.Exists(rutaAnterior))
+                {
+                    File.Delete(rutaAnterior);
+                }
+            }
+
+            // Guardar el archivo
+            await using FileStream fs = new(rutaCompleta, FileMode.Create);
+            await logoFile.OpenReadStream(maxLogoSize).CopyToAsync(fs);
+
+            // Actualizar configuración con ruta relativa
+            configuracion.LogoRuta = $"/logos/{nombreArchivo}";
+            
+            mensajeArchivoLogo = "Logo guardado correctamente";
+            logoFile = null;
+        }
+        catch (Exception ex)
+        {
+            errorLogo = $"Error al guardar el logo: {ex.Message}";
+        }
+    }
+
+    private async Task EliminarLogo()
+    {
+        if (configuracion == null || string.IsNullOrEmpty(configuracion.LogoRuta))
+        {
+            return;
+        }
+
+        try
+        {
+            var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar el logo?");
+            if (!confirmar)
+            {
+                return;
+            }
+
+            // Eliminar archivo físico si existe
+            var rutaCompleta = Path.Combine(_webHostEnvironment.WebRootPath, configuracion.LogoRuta.TrimStart('/', '\\'));
+            if (File.Exists(rutaCompleta))
+            {
+                File.Delete(rutaCompleta);
+            }
+
+            // Limpiar configuración
+            configuracion.LogoRuta = null;
+
+            await ConfiguracionService.ActualizarAsync(configuracion);
+            
+            mensajeArchivoLogo = "Logo eliminado correctamente";
+            await JSRuntime.InvokeVoidAsync("alert", "Logo eliminado correctamente");
+        }
+        catch (Exception ex)
+        {
+            errorLogo = $"Error al eliminar el logo: {ex.Message}";
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al eliminar: {ex.Message}");
+        }
+    }
+}

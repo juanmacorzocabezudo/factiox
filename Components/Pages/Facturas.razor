@@ -1,0 +1,185 @@
+@page "/facturas"
+@using FactioX.Models
+@using FactioX.Services
+@inject IFacturaService FacturaService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-auto ms-auto">
+            <button class="btn btn-primary" @onclick="NuevaFactura">
+                <i class="bi bi-plus-circle"></i> Nueva Factura
+            </button>
+        </div>
+    </div>
+
+    @if (facturas == null)
+    {
+        <p><em>Cargando...</em></p>
+    }
+    else if (!facturas.Any())
+    {
+        <div class="alert alert-info">
+            No hay facturas registradas.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Número</th>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Estado</th>
+                        <th>Vencimiento</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var factura in facturas)
+                    {
+                        <tr class="@(factura.Estado == EstadoFactura.Vencida ? "table-warning" : "")" 
+                            @ondblclick="() => VerFactura(factura.Id)" 
+                            style="cursor: pointer;">
+                            <td>@factura.NumeroFactura</td>
+                            <td>@factura.FechaEmision.ToString("dd/MM/yyyy")</td>
+                            <td>@factura.Cliente?.Nombre</td>
+                            <td>
+                                <span class="badge bg-@ObtenerColorEstado(factura.Estado)">
+                                    @factura.Estado
+                                </span>
+                            </td>
+                            <td>
+                                @if (factura.FechaVencimiento.HasValue)
+                                {
+                                    @factura.FechaVencimiento.Value.ToString("dd/MM/yyyy")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td class="text-end">@factura.Total.ToString("C2")</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => VerFactura(factura.Id)">
+                                    <i class="bi bi-eye"></i> Ver
+                                </button>
+                                @if (factura.Estado == EstadoFactura.Emitida || factura.Estado == EstadoFactura.Vencida)
+                                {
+                                    <button class="btn btn-sm btn-outline-success" @onclick="() => MarcarComoPagada(factura.Id)">
+                                        <i class="bi bi-check-circle"></i> Pagada
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarFactura(factura.Id)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">Total Emitido</h6>
+                        <h4 class="card-title">@facturas.Sum(f => f.Total).ToString("C2")</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">Pagadas</h6>
+                        <h4 class="card-title text-success">
+                            @facturas.Where(f => f.Estado == EstadoFactura.Pagada).Sum(f => f.Total).ToString("C2")
+                        </h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">Pendientes</h6>
+                        <h4 class="card-title text-warning">
+                            @facturas.Where(f => f.Estado == EstadoFactura.Emitida).Sum(f => f.Total).ToString("C2")
+                        </h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">Vencidas</h6>
+                        <h4 class="card-title text-danger">
+                            @facturas.Where(f => f.Estado == EstadoFactura.Vencida).Sum(f => f.Total).ToString("C2")
+                        </h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Factura>? facturas;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarFacturas();
+    }
+
+    private async Task CargarFacturas()
+    {
+        facturas = await FacturaService.ObtenerTodosAsync();
+    }
+
+    private void NuevaFactura()
+    {
+        Navigation.NavigateTo("/facturas/nuevo");
+    }
+
+    private void VerFactura(int id)
+    {
+        Navigation.NavigateTo($"/facturas/editar/{id}");
+    }
+
+    private async Task MarcarComoPagada(int id)
+    {
+        var factura = await FacturaService.ObtenerPorIdAsync(id);
+        if (factura != null)
+        {
+            factura.Estado = EstadoFactura.Pagada;
+            factura.FechaPago = DateTime.Now;
+            await FacturaService.ActualizarAsync(id, factura);
+            await CargarFacturas();
+        }
+    }
+
+    private async Task EliminarFactura(int id)
+    {
+        await FacturaService.EliminarAsync(id);
+        await CargarFacturas();
+    }
+
+    private string ObtenerColorEstado(EstadoFactura estado)
+    {
+        return estado switch
+        {
+            EstadoFactura.Borrador => "secondary",
+            EstadoFactura.Emitida => "primary",
+            EstadoFactura.Pagada => "success",
+            EstadoFactura.Vencida => "danger",
+            EstadoFactura.Cancelada => "dark",
+            _ => "secondary"
+        };
+    }
+}

@@ -1,0 +1,516 @@
+@page "/gastos"
+@using FactioX.Models
+@using FactioX.Services
+@using FactioX.Data
+@using Microsoft.EntityFrameworkCore
+@using System.Globalization
+@inject ApplicationDbContext DbContext
+@inject IAuthService AuthService
+@inject ITenantService TenantService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Gastos - FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="mb-3 d-flex justify-content-between align-items-center">
+        <h2><i class="bi bi-wallet2"></i> Gastos</h2>
+        <button class="btn btn-primary" @onclick="GuardarCambios" disabled="@guardando">
+            <i class="bi bi-save"></i> @(guardando ? "Guardando..." : "Guardar Cambios")
+        </button>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <label class="form-label">Desde</label>
+                    <input type="date" class="form-control" @bind="fechaDesde" @bind:event="onchange" @bind:after="FiltrarDatos" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Hasta</label>
+                    <input type="date" class="form-control" @bind="fechaHasta" @bind:event="onchange" @bind:after="FiltrarDatos" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Categoría</label>
+                    <select class="form-select" @bind="filtroCategoria" @bind:after="FiltrarDatos">
+                        <option value="">Todas</option>
+                        @foreach (var cat in categoriasPredefinidas)
+                        {
+                            <option value="@cat">@cat</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Buscar</label>
+                    <input type="text" class="form-control" placeholder="Buscar en concepto..." @bind="busqueda" @bind:event="oninput" @bind:after="FiltrarDatos" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Gastos tipo Excel -->
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Registro de Gastos</h5>
+            <button class="btn btn-sm btn-success" @onclick="AgregarNuevaLinea">
+                <i class="bi bi-plus-circle"></i> Nueva Línea
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-bordered mb-0" style="font-size: 0.9rem;">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th style="width: 120px;">Fecha</th>
+                            <th style="width: 30%;">Concepto</th>
+                            <th style="width: 180px;">Categoría</th>
+                            <th style="width: 130px;" class="text-end">Importe (€)</th>
+                            <th style="width: 25%;">Observaciones</th>
+                            <th style="width: 80px;" class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var gasto in gastosFiltrados.OrderByDescending(g => g.Fecha).ThenByDescending(g => g.Id))
+                        {
+                            <tr class="@(gastosEditados.Contains(gasto.Id) ? "table-warning" : "")">
+                                <td>
+                                    <input type="date" 
+                                           class="form-control form-control-sm" 
+                                           @bind="gasto.Fecha" 
+                                           @bind:after="@(() => MarcarEditado(gasto.Id))" />
+                                </td>
+                                <td>
+                                    <input type="text" 
+                                           class="form-control form-control-sm" 
+                                           placeholder="Descripción del gasto..." 
+                                           @bind="gasto.Concepto" 
+                                           @bind:after="@(() => MarcarEditado(gasto.Id))" 
+                                           maxlength="500" />
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm" 
+                                            @bind="gasto.Categoria" 
+                                            @bind:after="@(() => MarcarEditado(gasto.Id))">
+                                        <option value="">Seleccionar...</option>
+                                        @foreach (var cat in categoriasPredefinidas)
+                                        {
+                                            <option value="@cat">@cat</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="number" 
+                                           class="form-control form-control-sm text-end" 
+                                           step="0.01" 
+                                           min="0"
+                                           placeholder="0.00" 
+                                           @bind="gasto.Importe" 
+                                           @bind:after="@(() => { MarcarEditado(gasto.Id); RecalcularTotales(); })" />
+                                </td>
+                                <td>
+                                    <input type="text" 
+                                           class="form-control form-control-sm" 
+                                           placeholder="Notas adicionales..." 
+                                           @bind="gasto.Observaciones" 
+                                           @bind:after="@(() => MarcarEditado(gasto.Id))" 
+                                           maxlength="1000" />
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-danger" 
+                                            @onclick="@(() => EliminarGasto(gasto))"
+                                            title="Eliminar">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                        @if (!gastosFiltrados.Any())
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                                    <p class="mb-0">No hay gastos registrados. Haz clic en "Nueva Línea" para comenzar.</p>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos y Resumen -->
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Total Gastos</h6>
+                    <h3 class="card-title">@TotalGastos.ToString("C", new CultureInfo("es-ES"))</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Número de Gastos</h6>
+                    <h3 class="card-title">@gastosFiltrados.Count</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2 text-muted">Promedio</h6>
+                    <h3 class="card-title">@PromedioGastos.ToString("C", new CultureInfo("es-ES"))</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gastos por Categoría -->
+    @if (gastosPorCategoria.Any())
+    {
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Gastos por Categoría</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Categoría</th>
+                                <th class="text-end">Total</th>
+                                <th class="text-end">% del Total</th>
+                                <th>Gráfico</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var grupo in gastosPorCategoria.OrderByDescending(g => g.Total))
+                            {
+                                var porcentaje = TotalGastos > 0 ? (grupo.Total / TotalGastos * 100) : 0;
+                                <tr>
+                                    <td><strong>@(string.IsNullOrEmpty(grupo.Categoria) ? "Sin categoría" : grupo.Categoria)</strong></td>
+                                    <td class="text-end">@grupo.Total.ToString("C", new CultureInfo("es-ES"))</td>
+                                    <td class="text-end">@porcentaje.ToString("0.00")%</td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar" role="progressbar" 
+                                                 style="width: @(porcentaje)%;" 
+                                                 aria-valuenow="@porcentaje" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="100">
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+
+
+    @if (mensaje != null)
+    {
+        <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+            <div class="toast show" role="alert">
+                <div class="toast-header @(mensajeEsError ? "bg-danger text-white" : "bg-success text-white")">
+                    <strong class="me-auto">
+                        <i class="bi @(mensajeEsError ? "bi-x-circle" : "bi-check-circle")"></i> 
+                        @(mensajeEsError ? "Error" : "Éxito")
+                    </strong>
+                    <button type="button" class="btn-close" @onclick="@(() => mensaje = null)"></button>
+                </div>
+                <div class="toast-body">
+                    @mensaje
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background-color: #f8f9fa;
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(0, 0, 0, 0.03);
+        cursor: pointer;
+    }
+    
+    .table-warning {
+        background-color: #fff3cd !important;
+    }
+    
+    input.form-control-sm {
+        font-size: 0.875rem;
+    }
+</style>
+
+@code {
+    private List<Gasto> gastos = new();
+    private List<Gasto> gastosFiltrados = new();
+    private HashSet<int> gastosEditados = new();
+    private HashSet<int> gastosEliminados = new();
+    
+    private readonly List<string> categoriasPredefinidas = new()
+    {
+        "Salarios y nóminas",
+        "Alquiler y arrendamientos",
+        "Suministros (agua, luz, gas)",
+        "Telecomunicaciones e internet",
+        "Material de oficina",
+        "Transporte y combustible",
+        "Comidas y dietas",
+        "Marketing y publicidad",
+        "Servicios profesionales",
+        "Mantenimiento y reparaciones",
+        "Seguros",
+        "Impuestos y tasas",
+        "Formación",
+        "Limpieza",
+        "Otros"
+    };
+    
+    private DateTime? fechaDesde;
+    private DateTime? fechaHasta;
+    private string filtroCategoria = "";
+    private string busqueda = "";
+    
+    private bool guardando = false;
+    private string? mensaje;
+    private bool mensajeEsError;
+    
+    private decimal TotalGastos => gastosFiltrados.Sum(g => g.Importe);
+    private decimal PromedioGastos => gastosFiltrados.Any() ? gastosFiltrados.Average(g => g.Importe) : 0;
+    
+    private List<GastosPorCategoria> gastosPorCategoria => gastosFiltrados
+        .GroupBy(g => g.Categoria ?? "")
+        .Select(g => new GastosPorCategoria 
+        { 
+            Categoria = g.Key, 
+            Total = g.Sum(x => x.Importe) 
+        })
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Inicializar filtros de fecha (último mes)
+        fechaHasta = DateTime.Today;
+        fechaDesde = DateTime.Today.AddMonths(-1);
+        
+        await CargarGastos();
+    }
+
+    private async Task CargarGastos()
+    {
+        try
+        {
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                MostrarMensaje("No se pudo obtener el ID de empresa.", true);
+                return;
+            }
+            
+            gastos = await DbContext.Gastos
+                .Where(g => g.EmpresaId == empresaId.Value)
+                .OrderByDescending(g => g.Fecha)
+                .ToListAsync();
+            
+            FiltrarDatos();
+        }
+        catch (Exception ex)
+        {
+            MostrarMensaje($"Error al cargar gastos: {ex.Message}", true);
+        }
+    }
+
+    private void FiltrarDatos()
+    {
+        gastosFiltrados = gastos.Where(g =>
+        {
+            if (fechaDesde.HasValue && g.Fecha < fechaDesde.Value)
+                return false;
+            
+            if (fechaHasta.HasValue && g.Fecha > fechaHasta.Value)
+                return false;
+            
+            if (!string.IsNullOrEmpty(filtroCategoria) && 
+                !string.Equals(g.Categoria, filtroCategoria, StringComparison.OrdinalIgnoreCase))
+                return false;
+            
+            if (!string.IsNullOrEmpty(busqueda) && 
+                !(g.Concepto?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false))
+                return false;
+            
+            return true;
+        }).ToList();
+        
+        StateHasChanged();
+    }
+
+    private async Task AgregarNuevaLinea()
+    {
+        var empresaId = await TenantService.GetEmpresaIdAsync();
+        if (!empresaId.HasValue)
+        {
+            MostrarMensaje("No se pudo obtener el ID de empresa.", true);
+            return;
+        }
+        
+        var nuevoGasto = new Gasto
+        {
+            Fecha = DateTime.Today,
+            EmpresaId = empresaId.Value,
+            FechaCreacion = DateTime.Now
+        };
+        
+        gastos.Insert(0, nuevoGasto);
+        FiltrarDatos();
+        StateHasChanged();
+    }
+
+    private void MarcarEditado(int gastoId)
+    {
+        if (gastoId > 0) // Solo marcar si no es nuevo
+        {
+            gastosEditados.Add(gastoId);
+        }
+    }
+
+    private void RecalcularTotales()
+    {
+        StateHasChanged();
+    }
+
+    private async Task EliminarGasto(Gasto gasto)
+    {
+        bool confirmado = await JSRuntime.InvokeAsync<bool>("confirm", 
+            "¿Está seguro de que desea eliminar este gasto?");
+        
+        if (!confirmado)
+            return;
+        
+        if (gasto.Id > 0)
+        {
+            gastosEliminados.Add(gasto.Id);
+        }
+        
+        gastos.Remove(gasto);
+        FiltrarDatos();
+        StateHasChanged();
+    }
+
+    private async Task GuardarCambios()
+    {
+        guardando = true;
+        try
+        {
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                MostrarMensaje("No se pudo obtener el ID de empresa.", true);
+                guardando = false;
+                return;
+            }
+            
+            // Validar datos
+            foreach (var gasto in gastos)
+            {
+                if (string.IsNullOrWhiteSpace(gasto.Concepto))
+                {
+                    MostrarMensaje("Todos los gastos deben tener un concepto.", true);
+                    guardando = false;
+                    return;
+                }
+                
+                if (gasto.Importe <= 0)
+                {
+                    MostrarMensaje("Todos los gastos deben tener un importe mayor a 0.", true);
+                    guardando = false;
+                    return;
+                }
+                
+                gasto.EmpresaId = empresaId.Value;
+            }
+            
+            // Eliminar gastos marcados para eliminar
+            foreach (var id in gastosEliminados)
+            {
+                var gastoDb = await DbContext.Gastos.FindAsync(id);
+                if (gastoDb != null)
+                {
+                    DbContext.Gastos.Remove(gastoDb);
+                }
+            }
+            
+            // Agregar o actualizar gastos
+            foreach (var gasto in gastos)
+            {
+                if (gasto.Id == 0)
+                {
+                    // Nuevo gasto
+                    DbContext.Gastos.Add(gasto);
+                }
+                else if (gastosEditados.Contains(gasto.Id))
+                {
+                    // Gasto editado
+                    gasto.FechaModificacion = DateTime.Now;
+                    DbContext.Gastos.Update(gasto);
+                }
+            }
+            
+            await DbContext.SaveChangesAsync();
+            
+            // Limpiar marcadores
+            gastosEditados.Clear();
+            gastosEliminados.Clear();
+            
+            MostrarMensaje("Cambios guardados correctamente.", false);
+            
+            // Recargar datos
+            await CargarGastos();
+        }
+        catch (Exception ex)
+        {
+            MostrarMensaje($"Error al guardar: {ex.Message}", true);
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+    private void MostrarMensaje(string msg, bool esError)
+    {
+        mensaje = msg;
+        mensajeEsError = esError;
+        StateHasChanged();
+        
+        // Auto-ocultar después de 5 segundos
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(5000);
+            mensaje = null;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private class GastosPorCategoria
+    {
+        public string Categoria { get; set; } = "";
+        public decimal Total { get; set; }
+    }
+}

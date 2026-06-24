@@ -1,0 +1,290 @@
+@page "/login"
+@using FactioX.Services
+@using FactioX.Components.Layout
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ProtectedLocalStorage LocalStorage
+@rendermode InteractiveServer
+@layout EmptyLayout
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <img src="LogoFactioxFIN.png" alt="FactioX" class="login-logo" />
+        </div>
+
+        <div class="login-body">
+            @if (!string.IsNullOrEmpty(mensajeError))
+            {
+                <div class="alert alert-danger" role="alert">
+                    @mensajeError
+                </div>
+            }
+
+            <EditForm Model="@loginModel" OnValidSubmit="@IniciarSesion">
+                <DataAnnotationsValidator />
+                
+                <div class="mb-3">
+                    <label for="usuario" class="form-label">Usuario</label>
+                    <div class="input-group">
+                        <span class="input-group-text">
+                            <span class="bi bi-person-fill"></span>
+                        </span>
+                        <InputText id="usuario" class="form-control" @bind-Value="loginModel.Usuario" placeholder="Ingresa tu usuario" />
+                    </div>
+                    <ValidationMessage For="@(() => loginModel.Usuario)" />
+                </div>
+
+                <div class="mb-4">
+                    <label for="contrasena" class="form-label">Contraseña</label>
+                    <div class="input-group">
+                        <span class="input-group-text">
+                            <span class="bi bi-lock-fill"></span>
+                        </span>
+                        <InputText id="contrasena" type="password" class="form-control" @bind-Value="loginModel.Contrasena" placeholder="Ingresa tu contraseña" />
+                    </div>
+                    <ValidationMessage For="@(() => loginModel.Contrasena)" />
+                </div>
+
+                <div class="mb-4">
+                    <div class="form-check">
+                        <InputCheckbox id="recordarme" class="form-check-input" @bind-Value="loginModel.RecordarUsuario" />
+                        <label class="form-check-label" for="recordarme">
+                            Recordar credenciales
+                        </label>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 btn-login" disabled="@cargando">
+                    @if (cargando)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <span>Iniciando sesión...</span>
+                    }
+                    else
+                    {
+                        <span class="bi bi-box-arrow-in-right me-2"></span>
+                        <span>Iniciar Sesión</span>
+                    }
+                </button>
+            </EditForm>
+        </div>
+
+        <div class="login-footer">
+            <p class="text-muted mb-0">© 2026 FactioX - Sistema de Facturación</p>
+        </div>
+    </div>
+</div>
+
+<style>
+    .login-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+       justify-content: center;
+        background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 50%, #81c784 100%);
+        padding: 2rem;
+    }
+
+    .login-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        max-width: 450px;
+        width: 100%;
+        overflow: hidden;
+    }
+
+    .login-header {
+        background: #1a3a1a;
+        color: white;
+        padding: 2rem;
+        text-align: center;
+    }
+
+    .login-logo {
+        height: 80px;
+        margin-bottom: 0;
+        filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+    }
+
+    .login-header h2 {
+        margin: 0 0 0.5rem;
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: white;
+    }
+
+    .login-header p {
+        margin: 0;
+        opacity: 0.95;
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .login-body {
+        padding: 2.5rem 2rem;
+    }
+
+    .login-footer {
+        background: #f8f9fa;
+        padding: 1.25rem 2rem;
+        text-align: center;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .input-group-text {
+        background-color: #f8f9fa;
+        border-right: none;
+    }
+
+    .input-group .form-control {
+        border-left: none;
+    }
+
+    .input-group:focus-within .input-group-text {
+        border-color: #4caf50;
+        background-color: #e8f5e9;
+    }
+
+    .input-group:focus-within .form-control {
+        border-color: #4caf50;
+    }
+
+    .btn-login {
+        padding: 0.75rem;
+        font-size: 1.05rem;
+        font-weight: 600;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .btn-login:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(46, 125, 50, 0.4);
+    }
+
+    .bi-person-fill,
+    .bi-lock-fill {
+        display: inline-block;
+        width: 1.2rem;
+        height: 1.2rem;
+        background-size: contain;
+        background-repeat: no-repeat;
+        vertical-align: middle;
+    }
+
+    .bi-person-fill {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%236c757d' viewBox='0 0 16 16'%3E%3Cpath d='M3 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H3Zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'/%3E%3C/svg%3E");
+    }
+
+    .bi-lock-fill {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%236c757d' viewBox='0 0 16 16'%3E%3Cpath d='M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z'/%3E%3C/svg%3E");
+    }
+
+    .bi-box-arrow-in-right {
+        display: inline-block;
+        width: 1.2rem;
+        height: 1.2rem;
+        background-size: contain;
+        background-repeat: no-repeat;
+        vertical-align: middle;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='white' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 0-1 0v2A1.5 1.5 0 0 0 6.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-8A1.5 1.5 0 0 0 5 3.5v2a.5.5 0 0 0 1 0v-2z'/%3E%3Cpath fill-rule='evenodd' d='M11.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H1.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z'/%3E%3C/svg%3E");
+    }
+
+    .alert {
+        border-radius: 8px;
+    }
+</style>
+
+@code {
+    private LoginModel loginModel = new();
+    private bool cargando = false;
+    private string? mensajeError;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                // Intentar cargar el usuario y contraseña guardados
+                var usuarioGuardadoResult = await LocalStorage.GetAsync<string>("usuarioRecordado");
+                var contrasenaGuardadaResult = await LocalStorage.GetAsync<string>("contrasenaRecordada");
+                
+                if (usuarioGuardadoResult.Success && !string.IsNullOrEmpty(usuarioGuardadoResult.Value))
+                {
+                    loginModel.Usuario = usuarioGuardadoResult.Value;
+                    loginModel.RecordarUsuario = true;
+                    
+                    if (contrasenaGuardadaResult.Success && !string.IsNullOrEmpty(contrasenaGuardadaResult.Value))
+                    {
+                        loginModel.Contrasena = contrasenaGuardadaResult.Value;
+                    }
+                    
+                    StateHasChanged();
+                }
+            }
+            catch (Exception)
+            {
+                // Si falla cargar desde LocalStorage, simplemente continuar sin datos guardados
+                // No mostrar error al usuario ya que es una funcionalidad opcional
+            }
+        }
+    }
+
+    private async Task IniciarSesion()
+    {
+        cargando = true;
+        mensajeError = null;
+
+        try
+        {
+            var resultado = await AuthService.IniciarSesionAsync(loginModel.Usuario, loginModel.Contrasena);
+
+            if (resultado.Exitoso)
+            {
+                // Guardar o eliminar credenciales según checkbox
+                if (loginModel.RecordarUsuario)
+                {
+                    await LocalStorage.SetAsync("usuarioRecordado", loginModel.Usuario);
+                    await LocalStorage.SetAsync("contrasenaRecordada", loginModel.Contrasena);
+                }
+                else
+                {
+                    await LocalStorage.DeleteAsync("usuarioRecordado");
+                    await LocalStorage.DeleteAsync("contrasenaRecordada");
+                }
+
+                // Esperar un momento para asegurar que SessionStorage se actualice
+                await Task.Delay(300);
+                Navigation.NavigateTo("/", forceLoad: false);
+            }
+            else
+            {
+                mensajeError = resultado.MensajeError ?? "Error desconocido al iniciar sesión.";
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeError = $"Error al iniciar sesión: {ex.Message}";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    public class LoginModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "El usuario es requerido")]
+        public string Usuario { get; set; } = "";
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "La contraseña es requerida")]
+        public string Contrasena { get; set; } = "";
+
+        public bool RecordarUsuario { get; set; } = false;
+    }
+}

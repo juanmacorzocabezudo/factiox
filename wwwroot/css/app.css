@@ -1,0 +1,545 @@
+/* FactioX - Paleta Verde */
+:root {
+    --verde-oscuro: #1b5e20;
+    --verde-medio: #2e7d32;
+    --verde-principal: #388e3c;
+    --verde-claro: #4caf50;
+    --verde-muy-claro: #66bb6a;
+    --verde-suave: #81c784;
+    --verde-fondo: #f1f8f4;
+    --verde-hover: #43a047;
+    --verde-pastel: #e8f5e9;
+}
+
+body {
+    background-color: var(--verde-pastel);
+}
+
+/* Título de bienvenida profesional */
+.welcome-title {
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 3rem;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    color: var(--verde-oscuro);
+    margin: 0;
+}
+
+/* Sobrescribir TODOS los estilos de NavLink de Blazor */
+::deep a.nav-link,
+::deep a.nav-link:link,
+::deep a.nav-link:visited,
+::deep a.nav-link:hover,
+::deep a.nav-link:focus,
+::deep a.nav-link:active,
+.navbar-nav a.nav-link,
+.navbar-nav a.nav-link:link,
+.navbar-nav a.nav-link:visited,
+.navbar-nav a.nav-link:hover,
+.navbar-nav a.nav-link:active,
+.navbar-nav a.nav-link:focus,
+a[class*="nav-link"],
+a[class*="nav-link"]:link,
+a[class*="nav-link"]:visited,
+a[class*="nav-link"]:hover,
+a[class*="nav-link"]:active,
+a[class*="nav-link"]:focus {
+    color: white !important;
+}
+
+/* Sobrescribir color del enlace de Bootstrap */
+.navbar-nav .nav-link {
+    --bs-nav-link-color: white !important;
+    --bs-nav-link-hover-color: white !important;
+    --bs-navbar-active-color: white !important;
+    --bs-link-color: white !important;
+    --bs-link-hover-color: white !important;
+}
+
+/* Botones Primary - Verde */
+.btn-primary {
+    background-color: var(--verde-principal);
+    border-color: var(--verde-principal);
+}
+
+.btn-primary:hover {
+    background-color: var(--verde-medio);
+    border-color: var(--verde-medio);
+}
+
+.btn-primary:active, .btn-primary:focus {
+    background-color: var(--verde-oscuro);
+    border-color: var(--verde-oscuro);
+    box-shadow: 0 0 0 0.2rem rgba(56, 142, 60, 0.5);
+}
+
+.btn-outline-primary {
+    color: var(--verde-principal);
+    border-color: var(--verde-principal);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--verde-principal);
+    border-color: var(--verde-principal);
+    color: white;
+}
+
+/* Botones Success - Verde claro */
+.btn-success {
+    background-color: var(--verde-claro);
+    border-color: var(--verde-claro);
+}
+
+.btn-success:hover {
+    background-color: var(--verde-principal);
+    border-color: var(--verde-principal);
+}
+
+.btn-outline-success {
+    color: var(--verde-claro);
+    border-color: var(--verde-claro);
+}
+
+.btn-outline-success:hover {
+    background-color: var(--verde-claro);
+    border-color: var(--verde-claro);
+    color: white;
+}
+
+/* Cards */
+.card-header.bg-primary {
+    background-color: var(--verde-principal) !important;
+}
+
+.card-header.bg-success {
+    background-color: var(--verde-claro) !important;
+}
+
+/* Badges */
+.badge.bg-primary {
+    background-color: var(--verde-principal) !important;
+}
+
+.badge.bg-success {
+    background-color: var(--verde-claro) !important;
+}
+
+/* Text colors */
+.text-primary {
+    color: var(--verde-principal) !important;
+}
+
+.text-success {
+    color: var(--verde-claro) !important;
+}
+
+/* Links */
+a {
+    color: var(--verde-principal);
+}
+
+a:hover {
+    color: var(--verde-medio);
+}
+
+/* Form controls - Verde suave en focus */
+.form-control:focus, .form-select:focus {
+    border-color: var(--verde-claro);
+    box-shadow: 0 0 0 0.2rem rgba(76, 175, 80, 0.25);
+}
+
+/* Tables - Hover verde */
+.table-hover tbody tr:hover {
+    background-color: rgba(76, 175, 80, 0.1);
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(76, 175, 80, 0.05);
+}
+
+/* Iconos Bootstrap - Verde */
+.bi-house-door-fill, .bi-people-fill, .bi-box-seam-fill, 
+.bi-file-earmark-text-fill, .bi-receipt, 
+.bi-plus-circle, .bi-pencil, .bi-trash, .bi-eye, 
+.bi-check-circle, .bi-save, .bi-x-circle, .bi-person-plus,
+.bi-plus-square, .bi-file-earmark-plus, .bi-receipt-cutoff {
+    color: var(--verde-principal);
+}
+
+/* Info elements - Verde */
+.alert-info {
+    background-color: #e8f5e9;
+    border-color: var(--verde-suave);
+    color: var(--verde-oscuro);
+}
+
+/* Personalización del color de fondo general */
+body {
+    background-color: var(--verde-fondo);
+}
+
+/* Cards con fondo blanco para contraste */
+.card {
+    background-color: white;
+    border: 1px solid rgba(76, 175, 80, 0.2);
+}
+
+/* Headings con acento verde */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--verde-oscuro);
+}
+
+/* Navbar active state */
+.nav-link.active {
+    background-color: var(--verde-claro) !important;
+}
+
+/* Custom scrollbar - Verde */
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--verde-fondo);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--verde-suave);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--verde-claro);
+}
+
+/* Spinner/Loading - Verde */
+.spinner-border {
+    color: var(--verde-principal);
+}
+
+/* Progress bars - Verde */
+.progress-bar {
+    background-color: var(--verde-principal);
+}
+
+/* Pagination - Verde */
+.page-link {
+    color: var(--verde-principal);
+}
+
+.page-link:hover {
+    color: var(--verde-medio);
+    background-color: rgba(76, 175, 80, 0.1);
+    border-color: var(--verde-claro);
+}
+
+.page-item.active .page-link {
+    background-color: var(--verde-principal);
+    border-color: var(--verde-principal);
+}
+
+/* Breadcrumb - Verde */
+.breadcrumb-item.active {
+    color: var(--verde-principal);
+}
+
+/* List group - Verde */
+.list-group-item.active {
+    background-color: var(--verde-principal);
+    border-color: var(--verde-principal);
+}
+
+/* Dropdown - Verde */
+.dropdown-item:hover, .dropdown-item:focus {
+    background-color: rgba(76, 175, 80, 0.1);
+    color: var(--verde-oscuro);
+}
+
+.dropdown-item.active {
+    background-color: var(--verde-principal);
+}
+
+/* ===== ESTILOS MEJORADOS DEL MENÚ NAVBAR ===== */
+/* Estilos más específicos para el menú de navegación */
+
+.navbar-nav .nav-link,
+nav a.nav-link,
+.nav-link {
+    display: flex !important;
+    align-items: center !important;
+    padding: 1rem 1.8rem !important;
+    color: white !important;
+    text-decoration: none !important;
+    border-radius: 10px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-weight: 600 !important;
+    font-size: 1.2rem !important;
+    white-space: nowrap !important;
+    background-color: transparent !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+/* Efecto de brillo al pasar el ratón */
+.navbar-nav .nav-link::before,
+nav a.nav-link::before,
+.nav-link::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: -100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent) !important;
+    transition: left 0.6s ease !important;
+}
+
+/* Estado hover - efectos dinámicos */
+.navbar-nav .nav-link:hover,
+nav a.nav-link:hover,
+.nav-link:hover {
+    background-color: rgba(76, 175, 80, 0.3) !important;
+    color: white !important;
+    transform: translateY(-4px) scale(1.02) !important;
+    box-shadow: 0 8px 20px rgba(76, 175, 80, 0.5) !important;
+}
+
+.navbar-nav .nav-link:hover::before,
+nav a.nav-link:hover::before,
+.nav-link:hover::before {
+    left: 100% !important;
+}
+
+/* Estado activo */
+.navbar-nav .nav-link.active,
+nav a.nav-link.active,
+.nav-link.active {
+    background-color: #2e7d32 !important;
+    color: white !important;
+    box-shadow: 0 4px 15px rgba(46, 125, 50, 0.6) !important;
+}
+
+.navbar-nav .nav-link.active:hover,
+nav a.nav-link.active:hover,
+.nav-link.active:hover {
+    background-color: #388e3c !important;
+    transform: translateY(-4px) scale(1.02) !important;
+}
+
+/* Iconos más grandes y animados */
+.navbar-nav .nav-link .bi,
+nav a.nav-link .bi,
+.nav-link .bi,
+.bi {
+    display: inline-block !important;
+    width: 1.8rem !important;
+    height: 1.8rem !important;
+    margin-right: 1rem !important;
+    background-size: contain !important;
+    background-repeat: no-repeat !important;
+    transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
+    flex-shrink: 0 !important;
+    vertical-align: middle !important;
+}
+
+/* Animación de iconos al hover */
+.navbar-nav .nav-link:hover .bi,
+nav a.nav-link:hover .bi,
+.nav-link:hover .bi {
+    transform: scale(1.3) rotate(12deg) !important;
+}
+
+/* Asegurar alineación vertical perfecta */
+.navbar-nav .nav-item,
+nav .nav-item,
+.nav-item {
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* ===== ESTILOS PARA GRÁFICOS DE ANÁLISIS ===== */
+
+/* Contenedor de gráficos */
+.chart-container {
+    padding: 1rem 0;
+    min-height: 250px;
+}
+
+/* Gráfico de Barras */
+.bar-chart {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+    height: 220px;
+    padding: 0 1rem;
+    gap: 1rem;
+}
+
+.bar-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    gap: 0.5rem;
+}
+
+.bar {
+    width: 100%;
+    background: linear-gradient(to top, #2e7d32, #4caf50);
+    border-radius: 4px 4px 0 0;
+    position: relative;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 0.5rem;
+}
+
+.bar:hover {
+    background: linear-gradient(to top, #1b5e20, #2e7d32);
+    transform: translateY(-5px);
+}
+
+.bar-value {
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.bar-label {
+    font-size: 0.85rem;
+    color: #666;
+    font-weight: 500;
+}
+
+/* Gráfico Circular (Pie) */
+.pie-chart-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    padding: 1rem;
+}
+
+.pie-chart {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: conic-gradient(
+        #4caf50 0% 60%,
+        #ff9800 60% 85%,
+        #f44336 85% 100%
+    );
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.pie-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.legend-color {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.legend-text {
+    font-size: 0.9rem;
+    color: #555;
+    font-weight: 500;
+}
+/* ===== ESTILOS PARA MENÚS DESPLEGABLES DEL NAVBAR ===== */
+.nav-item.dropdown {
+    position: relative;
+}
+
+.dropdown-toggle {
+    cursor: pointer;
+}
+
+.dropdown-toggle::after {
+    content: '▼';
+    font-size: 0.6rem;
+    margin-left: 0.4rem;
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
+
+/* Dropdowns - Selectores ultra específicos para sobrescribir Bootstrap completamente */
+.navbar-container .nav-item.dropdown,
+.navbar-container li.nav-item.dropdown {
+    position: relative !important;
+}
+
+.navbar-container .dropdown-menu[aria-labelledby],
+.navbar-container ul.dropdown-menu[aria-labelledby],
+.navbar-container .dropdown-menu[aria-labelledby="navbarDropdownContactos"],
+.navbar-container .dropdown-menu[aria-labelledby="navbarDropdownFinanzas"] {
+    display: none !important;
+    position: absolute !important;
+    top: 100% !important;
+    left: 0 !important;
+    min-width: 350px !important;
+    background-color: #1a3a1a !important;
+    border: none !important;
+    border-radius: 0 0 12px 12px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+    padding: 2rem 0 !important;
+    margin-top: -3px !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    margin-bottom: 0 !important;
+    z-index: 2000 !important;
+    list-style: none !important;
+}
+
+.navbar-container .dropdown-menu.show[aria-labelledby],
+.navbar-container ul.dropdown-menu.show[aria-labelledby] {
+    display: block !important;
+}
+
+.navbar-container .dropdown-item,
+.navbar-container ul.dropdown-menu .dropdown-item,
+.navbar-container .dropdown-menu a.dropdown-item,
+.navbar-container li a.dropdown-item {
+    display: flex !important;
+    align-items: center !important;
+    padding: 1.7rem 2.5rem !important;
+    color: white !important;
+    text-decoration: none !important;
+    transition: all 0.2s ease !important;
+    font-size: 1.6rem !important;
+    font-weight: 500 !important;
+    background-color: transparent !important;
+    border: none !important;
+    width: 100% !important;
+    text-align: left !important;
+    cursor: pointer !important;
+}
+
+.navbar-container .dropdown-item:hover,
+.navbar-container ul.dropdown-menu .dropdown-item:hover,
+.navbar-container .dropdown-menu a.dropdown-item:hover {
+    background-color: rgba(76, 175, 80, 0.4) !important;
+    padding-left: 3rem !important;
+    transform: none !important;
+    box-shadow: none !important;
+    color: white !important;
+}
+
+.navbar-container .dropdown-item .bi,
+.navbar-container ul.dropdown-menu .dropdown-item .bi,
+.navbar-container .dropdown-menu a.dropdown-item .bi {
+    width: 2rem !important;
+    height: 2rem !important;
+    margin-right: 1.5rem !important;
+}

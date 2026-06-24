@@ -1,0 +1,716 @@
+@page "/usuarios"
+@using FactioX.Models
+@using FactioX.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject IUsuarioService UsuarioService
+@inject IEmpresaService EmpresaService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-end align-items-center mb-4">
+        <button class="btn btn-primary" @onclick="NuevoUsuario">
+            <i class="bi bi-plus-circle"></i> Nuevo Usuario
+        </button>
+    </div>
+
+    @if (usuarios != null)
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Usuario</th>
+                                <th>Nombre Completo</th>
+                                <th>Email</th>
+                                <th>Rol</th>
+                                <th>Empresa</th>
+                                <th>Estado</th>
+                                @if (AuthService.Rol == Roles.SuperAdministrador)
+                                {
+                                    <th>Contraseña</th>
+                                    <th>Caducidad</th>
+                                }
+                                <th>Fecha Creación</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var usuario in UsuariosFiltrados)
+                            {
+                                <tr @ondblclick="() => EditarUsuario(usuario.Id)" style="cursor: pointer;">
+                                    <td><strong>@usuario.Username</strong></td>
+                                    <td>@usuario.NombreCompleto</td>
+                                    <td>@usuario.Email</td>
+                                    <td>
+                                        <span class="badge @ObtenerClaseRol(usuario.Rol)">
+                                            @usuario.Rol
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (usuario.EmpresaId.HasValue)
+                                        {
+                                            var empresa = empresas.FirstOrDefault(e => e.Id == usuario.EmpresaId.Value);
+                                            <span>@(empresa?.NombreComercial ?? "N/A")</span>
+                                        }
+                                        else
+                                        {
+                                            <em class="text-muted">Sin empresa</em>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge @(usuario.Activo ? "bg-success" : "bg-secondary")">
+                                            @(usuario.Activo ? "Activo" : "Inactivo")
+                                        </span>
+                                    </td>
+                                    @if (AuthService.Rol == Roles.SuperAdministrador)
+                                    {
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <code class="d-inline-block" style="font-weight: bold; color: #198754;">
+                                                    @(string.IsNullOrEmpty(usuario.PasswordTextoPlano) ? "N/A" : usuario.PasswordTextoPlano)
+                                                </code>
+                                                @if (!string.IsNullOrEmpty(usuario.PasswordTextoPlano))
+                                                {
+                                                    <button class="btn btn-sm btn-outline-success" 
+                                                            @onclick="() => CopiarAlPortapapeles(usuario.PasswordTextoPlano)" 
+                                                            title="Copiar contraseña">
+                                                        <i class="bi bi-clipboard"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </td>
+                                        <td>
+                                            @if (usuario.EsAccesoPrueba && usuario.FechaCaducidad.HasValue)
+                                            {
+                                                var diasRestantes = (usuario.FechaCaducidad.Value - DateTime.Now).Days;
+                                                var caducado = usuario.FechaCaducidad.Value < DateTime.Now;
+                                                <span class="badge @(caducado ? "bg-danger" : diasRestantes <= 7 ? "bg-warning" : "bg-info")" title="@usuario.FechaCaducidad.Value.ToString("dd/MM/yyyy HH:mm")">
+                                                    @if (caducado)
+                                                    {
+                                                        <i class="bi bi-x-circle"></i> <text>CADUCADO</text>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-clock"></i> <text>@diasRestantes días</text>
+                                                    }
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                                    }
+                                    <td>@usuario.FechaCreacion.ToString("dd/MM/yyyy")</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => EditarUsuario(usuario.Id)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        @if (usuario.Rol != Roles.SuperAdministrador)
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarUsuario(usuario.Id)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <p><em>Cargando...</em></p>
+    }
+</div>
+
+<!-- Modal para Crear/Editar Usuario -->
+<div class="modal fade" id="usuarioModal" tabindex="-1" aria-labelledby="usuarioModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header sticky-top bg-white">
+                <h5 class="modal-title" id="usuarioModalLabel">@(usuarioEditando?.Id == 0 ? "Nuevo Usuario" : "Editar Usuario")</h5>
+                <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                @if (usuarioEditando != null)
+                {
+                    <EditForm Model="@usuarioEditando" OnValidSubmit="@GuardarUsuario">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        <!-- Datos Básicos -->
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">Datos Básicos</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Usuario *</label>
+                                        <InputText @bind-Value="usuarioEditando.Username" class="form-control" placeholder="Nombre de usuario" />
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Nombre Completo *</label>
+                                        <InputText @bind-Value="usuarioEditando.NombreCompleto" class="form-control" placeholder="Nombre completo" />
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label">Email *</label>
+                                        <InputText @bind-Value="usuarioEditando.Email" class="form-control" type="email" placeholder="correo@ejemplo.com" />
+                                    </div>
+                                </div>
+                                @if (usuarioEditando.Id == 0)
+                                {
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Contraseña *</label>
+                                            <InputText @bind-Value="passwordNuevo" class="form-control" type="password" placeholder="Contraseña" />
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Confirmar Contraseña *</label>
+                                            <InputText @bind-Value="passwordConfirmacion" class="form-control" type="password" placeholder="Confirmar contraseña" />
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="alert alert-info">
+                                        <small>Deja los campos de contraseña vacíos si no deseas cambiarla</small>
+                                    </div>
+                                    @if (AuthService.Rol == Roles.SuperAdministrador)
+                                    {
+                                        <div class="mb-3">
+                                            <label class="form-label">Contraseña Actual (Texto Plano)</label>
+                                            <div class="input-group mb-2">
+                                                <input type="text" class="form-control" value="@(usuarioEditando.PasswordTextoPlano ?? "No disponible")" readonly style="font-family: monospace; font-size: 1rem; font-weight: bold; color: #198754;" />
+                                                @if (!string.IsNullOrEmpty(usuarioEditando.PasswordTextoPlano))
+                                                {
+                                                    <button class="btn btn-outline-success" type="button" @onclick="() => CopiarAlPortapapeles(usuarioEditando.PasswordTextoPlano)" title="Copiar contraseña">
+                                                        <i class="bi bi-clipboard"></i> Copiar
+                                                    </button>
+                                                }
+                                            </div>
+                                            <div class="d-flex gap-2 align-items-start mb-2">
+                                                <button class="btn btn-sm btn-warning" type="button" @onclick="ResetearPassword">
+                                                    <i class="bi bi-key"></i> Generar Nueva Contraseña
+                                                </button>
+                                                @if (!string.IsNullOrEmpty(passwordGenerada))
+                                                {
+                                                    <div class="flex-grow-1">
+                                                        <div class="alert alert-success mb-0 py-2">
+                                                            <strong>Nueva contraseña:</strong>
+                                                            <div class="d-flex gap-2 mt-1">
+                                                                <code class="fs-5">@passwordGenerada</code>
+                                                                <button class="btn btn-sm btn-success" type="button" @onclick="() => CopiarAlPortapapeles(passwordGenerada)">
+                                                                    <i class="bi bi-clipboard"></i> Copiar
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                            <small class="text-muted">Hash: <code style="font-size: 0.65rem;">@(usuarioEditando.Password?.Substring(0, Math.Min(40, usuarioEditando.Password.Length)))...</code></small>
+                                        </div>
+                                    }
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Nueva Contraseña (opcional)</label>
+                                            <InputText @bind-Value="passwordNuevo" class="form-control" type="password" placeholder="Nueva contraseña" />
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Confirmar Nueva Contraseña</label>
+                                            <InputText @bind-Value="passwordConfirmacion" class="form-control" type="password" placeholder="Confirmar contraseña" />
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Permisos y Estado -->
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">Permisos y Estado</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Rol *</label>
+                                        <InputSelect @bind-Value="usuarioEditando.Rol" class="form-select">
+                                            <option value="@Roles.Usuario">Usuario</option>
+                                            <option value="@Roles.Administrador">Administrador</option>
+                                            @if (AuthService.Rol == Roles.SuperAdministrador)
+                                            {
+                                                <option value="@Roles.SuperAdministrador">SuperAdministrador</option>
+                                                <option value="@Roles.Asesoria">Asesoría</option>
+                                            }
+                                        </InputSelect>
+                                    </div>
+                                    @if (usuarioEditando.Rol != Roles.SuperAdministrador && usuarioEditando.Rol != Roles.Asesoria)
+                                    {
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Empresa *</label>
+                                            @if (AuthService.Rol == Roles.SuperAdministrador)
+                                            {
+                                                <InputSelect @bind-Value="usuarioEditando.EmpresaId" class="form-select">
+                                                    <option value="">Seleccione una empresa</option>
+                                                    @foreach (var empresa in empresas)
+                                                    {
+                                                        <option value="@empresa.Id">@empresa.NombreComercial</option>
+                                                    }
+                                                </InputSelect>
+                                            }
+                                            else
+                                            {
+                                                @* Administradores de empresa no pueden cambiar la empresa *@
+                                                <input type="text" class="form-control" value="@ObtenerNombreEmpresa(usuarioEditando.EmpresaId)" disabled />
+                                            }
+                                        </div>
+                                    }
+                                    @if (usuarioEditando.Rol == Roles.Asesoria && AuthService.Rol == Roles.SuperAdministrador)
+                                    {
+                                        <div class="col-md-12 mb-3">
+                                            <label class="form-label">Empresas Asociadas (para Asesoría) *</label>
+                                            <small class="d-block text-muted mb-2">Seleccione las empresas a las que esta asesoría tendrá acceso</small>
+                                            <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                                                @foreach (var empresa in empresas)
+                                                {
+                                                    <div class="form-check mb-2">
+                                                        <input type="checkbox" 
+                                                               class="form-check-input" 
+                                                               id="empresa_@empresa.Id"
+                                                               checked="@(empresasSeleccionadas.Contains(empresa.Id))"
+                                                               @onchange="@((e) => ToggleEmpresa(empresa.Id, (bool)e.Value!))" />
+                                                        <label class="form-check-label" for="empresa_@empresa.Id">
+                                                            @empresa.NombreComercial
+                                                        </label>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <div class="form-check">
+                                            <InputCheckbox @bind-Value="usuarioEditando.Activo" class="form-check-input" id="usuarioActivo" />
+                                            <label class="form-check-label" for="usuarioActivo">
+                                                Usuario activo
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                @if (AuthService.Rol == Roles.SuperAdministrador)
+                                {
+                                    <div class="card mb-3 border-warning">
+                                        <div class="card-header bg-warning bg-opacity-10">
+                                            <div class="form-check">
+                                                <InputCheckbox @bind-Value="usuarioEditando.EsAccesoPrueba" class="form-check-input" id="esAccesoPrueba" />
+                                                <label class="form-check-label fw-bold" for="esAccesoPrueba">
+                                                    <i class="bi bi-hourglass-split"></i> Acceso de Prueba (Temporal)
+                                                </label>
+                                            </div>
+                                        </div>
+                                        @if (usuarioEditando.EsAccesoPrueba)
+                                        {
+                                            <div class="card-body">
+                                                <div class="alert alert-info mb-3">
+                                                    <i class="bi bi-info-circle"></i>
+                                                    <strong>Acceso temporal:</strong> Este usuario caducará automáticamente en la fecha indicada y no podrá iniciar sesión.
+                                                </div>
+                                                <div class="row">
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">Fecha de Caducidad *</label>
+                                                        <InputDate @bind-Value="usuarioEditando.FechaCaducidad" class="form-control" />
+                                                    </div>
+                                                    <div class="col-md-6 mb-3">
+                                                        <label class="form-label">Días de Prueba</label>
+                                                        <div class="input-group">
+                                                            <input type="number" class="form-control" @bind="diasPrueba" @bind:event="oninput" min="1" max="365" placeholder="Ej: 30" />
+                                                            <button type="button" class="btn btn-outline-secondary" @onclick="AplicarDiasPrueba">
+                                                                <i class="bi bi-calendar-plus"></i> Aplicar
+                                                            </button>
+                                                        </div>
+                                                        <small class="text-muted">Selecciona los días y haz clic en Aplicar</small>
+                                                    </div>
+                                                </div>
+                                                @if (usuarioEditando.FechaCaducidad.HasValue)
+                                                {
+                                                    var diasRestantes = (usuarioEditando.FechaCaducidad.Value - DateTime.Now).Days;
+                                                    var caducado = usuarioEditando.FechaCaducidad.Value < DateTime.Now;
+                                                    <div class="alert @(caducado ? "alert-danger" : diasRestantes <= 7 ? "alert-warning" : "alert-success") mb-0">
+                                                        @if (caducado)
+                                                        {
+                                                            <i class="bi bi-exclamation-triangle-fill"></i>
+                                                            <strong><text>¡CADUCADO!</text></strong> <text>Este usuario caducó el @usuarioEditando.FechaCaducidad.Value.ToString("dd/MM/yyyy HH:mm")</text>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-calendar-check"></i>
+                                                            <strong>Caduca:</strong> <text>@usuarioEditando.FechaCaducidad.Value.ToString("dd/MM/yyyy HH:mm")</text>
+                                                            <span class="badge bg-dark">@diasRestantes días restantes</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (usuarioEditando.Id > 0)
+                                {
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <small class="text-muted">Fecha de creación: @usuarioEditando.FechaCreacion.ToString("dd/MM/yyyy HH:mm")</small>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">@(usuarioEditando.Id == 0 ? "Crear" : "Guardar")</button>
+                        </div>
+                    </EditForm>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Usuario>? usuarios;
+    private List<Empresa> empresas = new();
+    private Usuario? usuarioEditando;
+    private string passwordNuevo = string.Empty;
+    private string passwordConfirmacion = string.Empty;
+    private string passwordGenerada = string.Empty;
+    private List<int> empresasSeleccionadas = new List<int>();
+    private int diasPrueba = 30;
+
+    private void ToggleEmpresa(int empresaId, bool isChecked)
+    {
+        if (isChecked)
+        {
+            if (!empresasSeleccionadas.Contains(empresaId))
+                empresasSeleccionadas.Add(empresaId);
+        }
+        else
+        {
+            empresasSeleccionadas.Remove(empresaId);
+        }
+    }
+
+    private void AplicarDiasPrueba()
+    {
+        if (usuarioEditando != null && diasPrueba > 0)
+        {
+            usuarioEditando.FechaCaducidad = DateTime.Now.AddDays(diasPrueba);
+        }
+    }
+
+    private IEnumerable<Usuario> UsuariosFiltrados
+    {
+        get
+        {
+            if (usuarios == null) return Enumerable.Empty<Usuario>();
+            
+            // Si es SuperAdmin, ve todos los usuarios
+            // Si es Admin de empresa, solo ve los de su empresa
+            if (AuthService.Rol == Roles.SuperAdministrador)
+                return usuarios;
+            
+            return usuarios.Where(u => u.EmpresaId == AuthService.EmpresaId);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        usuarios = await UsuarioService.ObtenerTodosAsync();
+        
+        // SuperAdmin carga todas las empresas, Admins solo ven su empresa
+        if (AuthService.Rol == Roles.SuperAdministrador)
+        {
+            empresas = await EmpresaService.ObtenerTodasAsync();
+        }
+        else if (AuthService.EmpresaId.HasValue)
+        {
+            var empresa = await EmpresaService.ObtenerPorIdAsync(AuthService.EmpresaId.Value);
+            empresas = empresa != null ? new List<Empresa> { empresa } : new List<Empresa>();
+        }
+    }
+
+    private async Task NuevoUsuario()
+    {
+        usuarioEditando = new Usuario
+        {
+            Id = 0,
+            Activo = true,
+            Rol = Roles.Usuario,
+            FechaCreacion = DateTime.Now,
+            EmpresaId = AuthService.Rol != Roles.SuperAdministrador ? AuthService.EmpresaId : null,
+            EsAccesoPrueba = false,
+            FechaCaducidad = null
+        };
+        passwordNuevo = string.Empty;
+        passwordConfirmacion = string.Empty;
+        empresasSeleccionadas.Clear();
+        diasPrueba = 30;
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('usuarioModal')).show()");
+    }
+
+    private async Task EditarUsuario(int id)
+    {
+        var usuario = usuarios?.FirstOrDefault(u => u.Id == id);
+        if (usuario != null)
+        {
+            // Crear una copia para edición
+            usuarioEditando = new Usuario
+            {
+                Id = usuario.Id,
+                Username = usuario.Username,
+                Password = usuario.Password,
+                PasswordTextoPlano = usuario.PasswordTextoPlano,
+                NombreCompleto = usuario.NombreCompleto,
+                Email = usuario.Email,
+                Rol = usuario.Rol,
+                Activo = usuario.Activo,
+                FechaCreacion = usuario.FechaCreacion,
+                EmpresaId = usuario.EmpresaId,
+                EsAccesoPrueba = usuario.EsAccesoPrueba,
+                FechaCaducidad = usuario.FechaCaducidad
+            };
+            passwordNuevo = string.Empty;
+            passwordConfirmacion = string.Empty;
+            passwordGenerada = string.Empty;
+            diasPrueba = 30;
+            
+            // Cargar empresas asociadas si es Asesoría
+            empresasSeleccionadas.Clear();
+            if (usuario.Rol == Roles.Asesoria)
+            {
+                var asociaciones = await UsuarioService.ObtenerEmpresasAsociadasAsync(usuario.Id);
+                empresasSeleccionadas = asociaciones.Select(ue => ue.EmpresaId).ToList();
+            }
+            
+            await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('usuarioModal')).show()");
+        }
+    }
+
+    private async Task GuardarUsuario()
+    {
+        if (usuarioEditando == null) return;
+
+        // Validar contraseñas
+        if (usuarioEditando.Id == 0) // Nuevo usuario
+        {
+            if (string.IsNullOrWhiteSpace(passwordNuevo))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "La contraseña es requerida para nuevos usuarios");
+                return;
+            }
+            if (passwordNuevo != passwordConfirmacion)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Las contraseñas no coinciden");
+                return;
+            }
+            usuarioEditando.Password = passwordNuevo;
+        }
+        else // Edición
+        {
+            if (!string.IsNullOrWhiteSpace(passwordNuevo))
+            {
+                if (passwordNuevo != passwordConfirmacion)
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Las contraseñas no coinciden");
+                    return;
+                }
+                usuarioEditando.Password = passwordNuevo;
+            }
+        }
+
+        // Validar empresa para roles que no son SuperAdmin ni Asesoría
+        if (usuarioEditando.Rol != Roles.SuperAdministrador && 
+            usuarioEditando.Rol != Roles.Asesoria && 
+            !usuarioEditando.EmpresaId.HasValue)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe seleccionar una empresa para este rol");
+            return;
+        }
+        
+        // Validar que Asesoría tenga al menos una empresa seleccionada
+        if (usuarioEditando.Rol == Roles.Asesoria && empresasSeleccionadas.Count == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe seleccionar al menos una empresa para el rol Asesoría");
+            return;
+        }
+        
+        // Validar fecha de caducidad si es acceso de prueba
+        if (usuarioEditando.EsAccesoPrueba && !usuarioEditando.FechaCaducidad.HasValue)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe establecer una fecha de caducidad para los accesos de prueba");
+            return;
+        }
+        
+        // Si no es acceso de prueba, limpiar la fecha de caducidad
+        if (!usuarioEditando.EsAccesoPrueba)
+        {
+            usuarioEditando.FechaCaducidad = null;
+        }
+
+        // Si el rol es SuperAdministrador o Asesoría, quitar la empresa
+        if (usuarioEditando.Rol == Roles.SuperAdministrador || usuarioEditando.Rol == Roles.Asesoria)
+        {
+            usuarioEditando.EmpresaId = null;
+        }
+
+        // SEGURIDAD: Si el usuario autenticado NO es SuperAdmin, forzar que solo pueda gestionar usuarios de su propia empresa
+        if (AuthService.Rol != Roles.SuperAdministrador)
+        {
+            // No permitir crear/editar SuperAdministradores o Asesorías
+            if (usuarioEditando.Rol == Roles.SuperAdministrador || usuarioEditando.Rol == Roles.Asesoria)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No tiene permisos para gestionar usuarios con este rol");
+                return;
+            }
+
+            // Forzar la empresa del administrador actual
+            usuarioEditando.EmpresaId = AuthService.EmpresaId;
+
+            if (!usuarioEditando.EmpresaId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error: No se pudo determinar su empresa");
+                return;
+            }
+        }
+
+        int usuarioId;
+        if (usuarioEditando.Id == 0)
+        {
+            await UsuarioService.CrearAsync(usuarioEditando);
+            // Obtener el ID del usuario recién creado
+            var usuariosActualizados = await UsuarioService.ObtenerTodosAsync();
+            var nuevoUsuario = usuariosActualizados.FirstOrDefault(u => u.Username == usuarioEditando.Username);
+            usuarioId = nuevoUsuario?.Id ?? 0;
+        }
+        else
+        {
+            usuarioId = usuarioEditando.Id;
+            await UsuarioService.ActualizarAsync(usuarioEditando.Id, usuarioEditando);
+        }
+
+        // Gestionar asociaciones de empresa si es Asesoría
+        if (usuarioEditando.Rol == Roles.Asesoria && usuarioId > 0)
+        {
+            // Obtener asociaciones actuales
+            var asociacionesActuales = await UsuarioService.ObtenerEmpresasAsociadasAsync(usuarioId);
+            var empresaIdsActuales = asociacionesActuales.Select(ue => ue.EmpresaId).ToList();
+
+            // Eliminar asociaciones que ya no están seleccionadas
+            foreach (var empresaId in empresaIdsActuales)
+            {
+                if (!empresasSeleccionadas.Contains(empresaId))
+                {
+                    await UsuarioService.DesasociarEmpresaAsync(usuarioId, empresaId);
+                }
+            }
+
+            // Agregar nuevas asociaciones
+            foreach (var empresaId in empresasSeleccionadas)
+            {
+                if (!empresaIdsActuales.Contains(empresaId))
+                {
+                    await UsuarioService.AsociarEmpresaAsync(usuarioId, empresaId);
+                }
+            }
+        }
+
+        await CerrarModal();
+        await CargarDatos();
+    }
+
+    private async Task CerrarModal()
+    {
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('usuarioModal'))?.hide()");
+        usuarioEditando = null;
+        passwordNuevo = string.Empty;
+        passwordConfirmacion = string.Empty;
+        empresasSeleccionadas.Clear();
+    }
+
+    private async Task EliminarUsuario(int id)
+    {
+        var confirmado = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este usuario?");
+        if (confirmado)
+        {
+            await UsuarioService.EliminarAsync(id);
+            await CargarDatos();
+        }
+    }
+
+    private string ObtenerClaseRol(string rol)
+    {
+        return rol switch
+        {
+            Roles.SuperAdministrador => "bg-danger",
+            Roles.Administrador => "bg-primary",
+            Roles.Usuario => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string ObtenerNombreEmpresa(int? empresaId)
+    {
+        if (!empresaId.HasValue) return "Sin empresa";
+        var empresa = empresas.FirstOrDefault(e => e.Id == empresaId.Value);
+        return empresa?.NombreComercial ?? "N/A";
+    }
+
+    private async Task CopiarAlPortapapeles(string texto)
+    {
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", texto);
+        await JSRuntime.InvokeVoidAsync("alert", "Contraseña copiada al portapapeles");
+    }
+
+    private async Task ResetearPassword()
+    {
+        if (usuarioEditando == null || usuarioEditando.Id == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe guardar el usuario antes de resetear la contraseña");
+            return;
+        }
+
+        var confirmado = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"¿Está seguro de que desea resetear la contraseña del usuario {usuarioEditando.Username}?\n\nSe generará una nueva contraseña temporal.");
+        
+        if (confirmado)
+        {
+            try
+            {
+                passwordGenerada = await UsuarioService.ResetearPasswordAsync(usuarioEditando.Id);
+                await JSRuntime.InvokeVoidAsync("alert", "Contraseña reseteada correctamente. Anota la nueva contraseña mostrada.");
+                await CargarDatos();
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error al resetear contraseña: {ex.Message}");
+            }
+        }
+    }
+}

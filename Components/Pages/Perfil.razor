@@ -1,0 +1,324 @@
+@page "/perfil"
+@using FactioX.Models
+@using FactioX.Services
+@inject IUsuarioService UsuarioService
+@inject IEmpresaService EmpresaService
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Mi Perfil - FactioX</PageTitle>
+
+<div class="container-fluid">
+
+    @if (usuarioActual != null)
+    {
+        <div class="row">
+            <!-- Información Personal -->
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-person-badge"></i> Información Personal</h5>
+                    </div>
+                    <div class="card-body">
+                        <form @onsubmit="GuardarInformacionPersonal" @onsubmit:preventDefault>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Usuario *</label>
+                                    <input type="text" @bind="usuarioActual.Username" class="form-control" placeholder="Nombre de usuario" required />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Nombre Completo *</label>
+                                    <input type="text" @bind="usuarioActual.NombreCompleto" class="form-control" placeholder="Nombre completo" required />
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-12">
+                                    <label class="form-label">Email *</label>
+                                    <input type="email" @bind="usuarioActual.Email" class="form-control" placeholder="correo@ejemplo.com" required />
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-end">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-save"></i> Guardar Cambios
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Cambiar Contraseña -->
+                <div class="card mb-4">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0"><i class="bi bi-key-fill"></i> Cambiar Contraseña</h5>
+                    </div>
+                    <div class="card-body">
+                        <form @onsubmit="CambiarContrasena" @onsubmit:preventDefault>
+                            <div class="row mb-3">
+                                <div class="col-md-12">
+                                    <label class="form-label">Contraseña Actual *</label>
+                                    <input type="password" @bind="cambioPassword.PasswordActual" class="form-control" placeholder="Contraseña actual" required />
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Nueva Contraseña *</label>
+                                    <input type="password" @bind="cambioPassword.PasswordNueva" class="form-control" placeholder="Nueva contraseña" required />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Confirmar Nueva Contraseña *</label>
+                                    <input type="password" @bind="cambioPassword.PasswordConfirmacion" class="form-control" placeholder="Confirmar contraseña" required />
+                                </div>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <small><i class="bi bi-info-circle"></i> La contraseña debe tener al menos 6 caracteres.</small>
+                            </div>
+
+                            <div class="d-flex justify-content-end">
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="bi bi-key"></i> Cambiar Contraseña
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Lateral con Información Adicional -->
+            <div class="col-md-4">
+                <!-- Información de la Cuenta -->
+                <div class="card mb-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Información de la Cuenta</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <strong>Rol:</strong>
+                            <br />
+                            <span class="badge @ObtenerClaseRol(usuarioActual.Rol) mt-1">@usuarioActual.Rol</span>
+                        </div>
+
+                        <div class="mb-3">
+                            <strong>Estado:</strong>
+                            <br />
+                            <span class="badge @(usuarioActual.Activo ? "bg-success" : "bg-secondary") mt-1">
+                                @(usuarioActual.Activo ? "Activo" : "Inactivo")
+                            </span>
+                        </div>
+
+                        <div class="mb-3">
+                            <strong>Fecha de Creación:</strong>
+                            <br />
+                            <span class="text-muted">@usuarioActual.FechaCreacion.ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+
+                        @if (empresa != null)
+                        {
+                            <div class="mb-3">
+                                <strong>Empresa:</strong>
+                                <br />
+                                <span class="text-muted">@empresa.NombreComercial</span>
+                            </div>
+
+                            <div class="mb-3">
+                                <strong>Plan:</strong>
+                                <br />
+                                <span class="badge bg-primary mt-1">@empresa.PlanSuscripcion</span>
+                            </div>
+                        }
+                        else if (usuarioActual.Rol == Roles.SuperAdministrador)
+                        {
+                            <div class="alert alert-danger">
+                                <small><i class="bi bi-shield-check"></i> Acceso completo al sistema</small>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Preferencias -->
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0"><i class="bi bi-sliders"></i> Preferencias</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="notificacionesEmail" @bind="preferencias.NotificacionesEmail">
+                            <label class="form-check-label" for="notificacionesEmail">
+                                Notificaciones por Email
+                            </label>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="mostrarDashboard" @bind="preferencias.MostrarDashboardAlIniciar">
+                            <label class="form-check-label" for="mostrarDashboard">
+                                Mostrar Dashboard al iniciar
+                            </label>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Idioma</label>
+                            <select class="form-select" @bind="preferencias.Idioma">
+                                <option value="es">Español</option>
+                                <option value="en">English</option>
+                                <option value="ca">Català</option>
+                            </select>
+                        </div>
+
+                        <div class="d-flex justify-content-end">
+                            <button type="button" class="btn btn-secondary btn-sm" @onclick="GuardarPreferencias">
+                                <i class="bi bi-save"></i> Guardar Preferencias
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private Usuario? usuarioActual;
+    private Empresa? empresa;
+    private CambioPasswordModel cambioPassword = new();
+    private PreferenciasModel preferencias = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosUsuario();
+    }
+
+    private async Task CargarDatosUsuario()
+    {
+        // Obtener el usuario actual del AuthService
+        var usuarios = await UsuarioService.ObtenerTodosAsync();
+        usuarioActual = usuarios.FirstOrDefault(u => u.Username == AuthService.UsuarioActual);
+
+        if (usuarioActual != null && usuarioActual.EmpresaId.HasValue)
+        {
+            empresa = await EmpresaService.ObtenerPorIdAsync(usuarioActual.EmpresaId.Value);
+        }
+
+        // Cargar preferencias (por ahora valores por defecto - se pueden guardar en localStorage o BD)
+        preferencias = new PreferenciasModel
+        {
+            NotificacionesEmail = true,
+            MostrarDashboardAlIniciar = true,
+            Idioma = "es"
+        };
+    }
+
+    private async Task GuardarInformacionPersonal()
+    {
+        if (usuarioActual == null) return;
+
+        try
+        {
+            await UsuarioService.ActualizarAsync(usuarioActual.Id, usuarioActual);
+            await JSRuntime.InvokeVoidAsync("alert", "Información personal actualizada correctamente");
+            
+            // Actualizar el nombre en AuthService si cambió el username
+            await AuthService.InicializarAsync();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al actualizar: {ex.Message}");
+        }
+    }
+
+    private async Task CambiarContrasena()
+    {
+        if (usuarioActual == null) return;
+
+        // Validaciones
+        if (string.IsNullOrWhiteSpace(cambioPassword.PasswordActual) || 
+            string.IsNullOrWhiteSpace(cambioPassword.PasswordNueva) || 
+            string.IsNullOrWhiteSpace(cambioPassword.PasswordConfirmacion))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Todos los campos son requeridos");
+            return;
+        }
+
+        if (cambioPassword.PasswordNueva != cambioPassword.PasswordConfirmacion)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "La nueva contraseña y la confirmación no coinciden");
+            return;
+        }
+
+        if (cambioPassword.PasswordNueva.Length < 6)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "La contraseña debe tener al menos 6 caracteres");
+            return;
+        }
+
+        try
+        {
+            // Utilizar el método seguro de cambio de contraseña
+            bool exitoso = await UsuarioService.CambiarPasswordAsync(
+                usuarioActual.Id, 
+                cambioPassword.PasswordActual, 
+                cambioPassword.PasswordNueva
+            );
+            
+            if (exitoso)
+            {
+                // Limpiar formulario
+                cambioPassword = new CambioPasswordModel();
+                await JSRuntime.InvokeVoidAsync("alert", "Contraseña actualizada correctamente");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "La contraseña actual no es correcta");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al cambiar contraseña: {ex.Message}");
+        }
+    }
+
+    private async Task GuardarPreferencias()
+    {
+        // Aquí se podrían guardar las preferencias en localStorage o en la base de datos
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "preferencias", System.Text.Json.JsonSerializer.Serialize(preferencias));
+        await JSRuntime.InvokeVoidAsync("alert", "Preferencias guardadas correctamente");
+    }
+
+    private string ObtenerClaseRol(string rol)
+    {
+        return rol switch
+        {
+            Roles.SuperAdministrador => "bg-danger",
+            Roles.Administrador => "bg-primary",
+            Roles.Usuario => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+
+    // Modelos auxiliares
+    private class CambioPasswordModel
+    {
+        public string PasswordActual { get; set; } = string.Empty;
+        public string PasswordNueva { get; set; } = string.Empty;
+        public string PasswordConfirmacion { get; set; } = string.Empty;
+    }
+
+    private class PreferenciasModel
+    {
+        public bool NotificacionesEmail { get; set; }
+        public bool MostrarDashboardAlIniciar { get; set; }
+        public string Idioma { get; set; } = "es";
+    }
+}

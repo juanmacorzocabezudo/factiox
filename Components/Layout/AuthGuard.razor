@@ -1,0 +1,67 @@
+@using FactioX.Services
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div class="auth-spinner" style="display: @(verificando ? "flex" : "none"); position: fixed; top: 0; left: 0; width: 100%; height: 100vh; justify-content: center; align-items: center; background: white; z-index: 9999;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Verificando autenticación...</span>
+    </div>
+</div>
+
+<div style="display: @(verificando ? "none" : "block")">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private bool esLoginPage = false;
+    private bool verificando = true;
+
+    protected override void OnInitialized()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        esLoginPage = uri.AbsolutePath.ToLower() == "/login";
+        
+        AuthService.OnCambioAutenticacion += ManejoCambioAutenticacion;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Inicializar desde SessionStorage
+            await AuthService.InicializarAsync();
+
+            // Terminar verificación y mostrar contenido SIEMPRE
+            verificando = false;
+            StateHasChanged();
+
+            // Si no está autenticado y no está en login, redirigir
+            if (!AuthService.EstaAutenticado && !esLoginPage)
+            {
+                Navigation.NavigateTo("/login", forceLoad: false);
+            }
+        }
+    }
+
+    private void ManejoCambioAutenticacion()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        esLoginPage = uri.AbsolutePath.ToLower() == "/login";
+
+        if (!AuthService.EstaAutenticado && !esLoginPage)
+        {
+            Navigation.NavigateTo("/login", forceLoad: false);
+        }
+
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        AuthService.OnCambioAutenticacion -= ManejoCambioAutenticacion;
+    }
+}

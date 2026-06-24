@@ -1,0 +1,119 @@
+@page "/modulo-no-disponible/{NombreModulo}"
+@using FactioX.Services
+@inject NavigationManager Navigation
+@inject IAuthService AuthService
+@rendermode InteractiveServer
+
+<PageTitle>@NombreModulo - FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow-lg border-0">
+                <div class="card-body text-center p-5">
+                    <div class="mb-4">
+                        <i class="bi bi-lock-fill text-warning" style="font-size: 5rem;"></i>
+                    </div>
+                    
+                    <h2 class="card-title mb-4 text-primary">Módulo @NombreModulo</h2>
+                    
+                    <div class="alert alert-info" role="alert">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        <strong>Módulo no disponible en tu suscripción</strong>
+                    </div>
+                    
+                    <p class="lead mb-4">
+                        Este módulo no está activo en tu plan actual.
+                    </p>
+                    
+                    <div class="card bg-light mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-box-seam me-2"></i>
+                                ¿Deseas activar el módulo de @NombreModulo?
+                            </h5>
+                            <p class="card-text mt-3">
+                                Para más información sobre este módulo y cómo activarlo en tu suscripción, 
+                                por favor contacta con el administrador de <strong>FactioX</strong>.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="mailto:soporte@factiox.com" class="btn btn-primary btn-lg">
+                            <i class="bi bi-envelope-fill me-2"></i>
+                            Contactar con FactioX
+                        </a>
+                        <button type="button" class="btn btn-outline-secondary btn-lg" @onclick="VolverInicio">
+                            <i class="bi bi-house-fill me-2"></i>
+                            Volver al inicio
+                        </button>
+                    </div>
+                    
+                    <hr class="my-4" />
+                    
+                    <div class="text-start">
+                        <h6 class="mb-3"><i class="bi bi-star-fill text-warning me-2"></i>Beneficios del módulo de @NombreModulo:</h6>
+                        <ul class="list-unstyled">
+                            @if (NombreModulo == "Contabilidad")
+                            {
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Gestión completa de contabilidad</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Plan contable personalizable</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Informes financieros automáticos</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Conciliación bancaria</li>
+                            }
+                            else if (NombreModulo == "TPV")
+                            {
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Terminal punto de venta táctil</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Gestión de caja y turnos</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Impresión de tickets</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Sincronización con inventario</li>
+                            }
+                            else if (NombreModulo == "Almacén")
+                            {
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Control de stock avanzado</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Gestión de ubicaciones</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Alertas de stock mínimo</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Trazabilidad completa</li>
+                            }
+                            else if (NombreModulo == "Producción")
+                            {
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Órdenes de fabricación</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Gestión de materias primas</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Control de costes de producción</li>
+                                <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Planificación de recursos</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string NombreModulo { get; set; } = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InicializarAsync();
+
+            if (!AuthService.EstaAutenticado)
+            {
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
+            else
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void VolverInicio()
+    {
+        Navigation.NavigateTo("/");
+    }
+}

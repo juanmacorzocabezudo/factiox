@@ -1,0 +1,154 @@
+@page "/configuracion"
+@using FactioX.Services
+@using FactioX.Models
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mt-4">
+        @if (AuthService.Rol == Roles.SuperAdministrador || AuthService.Rol == Roles.Administrador)
+        {
+            <div class="col-md-6 mb-4">
+                <div class="card config-card h-100">
+                    <div class="card-body text-center">
+                        <div class="config-icon">
+                            <i class="bi bi-people"></i>
+                        </div>
+                        <h3 class="card-title">Usuarios</h3>
+                        <p class="card-text text-muted">
+                            Gestiona los usuarios del sistema, permisos y roles
+                        </p>
+                        <button class="btn btn-primary btn-lg mt-3" @onclick='() => Navigation.NavigateTo("/usuarios")'>
+                            <span class="bi bi-arrow-right-circle"></span> Ir a Usuarios
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (AuthService.Rol == Roles.SuperAdministrador)
+        {
+            <div class="col-md-6 mb-4">
+                <div class="card config-card h-100">
+                    <div class="card-body text-center">
+                        <div class="config-icon">
+                            <i class="bi bi-building"></i>
+                        </div>
+                        <h3 class="card-title">Empresas</h3>
+                        <p class="card-text text-muted">
+                            Administra las empresas del sistema y su configuración
+                        </p>
+                        <button class="btn btn-primary btn-lg mt-3" @onclick='() => Navigation.NavigateTo("/empresas")'>
+                            <span class="bi bi-arrow-right-circle"></span> Ir a Empresas
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <div class="col-md-6 mb-4">
+            <div class="card config-card h-100">
+                <div class="card-body text-center">
+                    <div class="config-icon">
+                        <i class="bi bi-person-circle"></i>
+                    </div>
+                    <h3 class="card-title">Mi Perfil</h3>
+                    <p class="card-text text-muted">
+                        Gestiona tu información personal, contraseña y preferencias
+                    </p>
+                    <button class="btn btn-primary btn-lg mt-3" @onclick='() => Navigation.NavigateTo("/perfil")'>
+                        <span class="bi bi-arrow-right-circle"></span> Ir a Mi Perfil
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-4">
+            <div class="card config-card h-100">
+                <div class="card-body text-center">
+                    <div class="config-icon">
+                        <i class="bi bi-building"></i>
+                    </div>
+                    <h3 class="card-title">Información empresa</h3>
+                    <p class="card-text text-muted">
+                        Configura los datos de tu empresa, facturación y documentos
+                    </p>
+                    <button class="btn btn-primary btn-lg mt-3" @onclick='() => Navigation.NavigateTo("/informacion-empresa")'>
+                        <span class="bi bi-arrow-right-circle"></span> Ir a Información empresa
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-4">
+            <div class="card config-card h-100">
+                <div class="card-body text-center">
+                    <div class="config-icon">
+                        <i class="bi bi-wallet2"></i>
+                    </div>
+                    <h3 class="card-title">Formas de Pago</h3>
+                    <p class="card-text text-muted">
+                        Gestiona las formas de pago disponibles para facturas
+                    </p>
+                    <button class="btn btn-primary btn-lg mt-3" @onclick='() => Navigation.NavigateTo("/configuracion/formas-pago")'>
+                        <span class="bi bi-arrow-right-circle"></span> Ir a Formas de Pago
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .config-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .config-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    }
+
+    .config-icon {
+        font-size: 4rem;
+        color: #2e7d32;
+        margin-bottom: 1rem;
+    }
+
+    .config-icon i {
+        display: inline-block;
+    }
+
+    .card-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1a3a1a;
+        margin-bottom: 0.5rem;
+    }
+
+    .card-text {
+        font-size: 1rem;
+        margin-bottom: 1rem;
+    }
+</style>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InicializarAsync();
+
+            if (!AuthService.EstaAutenticado)
+            {
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
+        }
+    }
+}

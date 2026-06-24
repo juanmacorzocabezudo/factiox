@@ -1,0 +1,688 @@
+@page "/facturacion-masiva"
+@using FactioX.Models
+@using FactioX.Services
+@inject IClienteService ClienteService
+@inject IFacturaService FacturaService
+@inject IProductoService ProductoService
+@inject ITenantService TenantService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Facturación Masiva - FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-lightning-charge-fill"></i> Facturación Masiva</h2>
+        <p class="text-muted mb-0"><i class="bi bi-info-circle"></i> Selecciona manualmente los clientes y genera sus facturas en un solo proceso</p>
+    </div>
+    <div class="d-flex justify-content-start mb-3">
+        <div>
+            <button class="btn btn-lg" style="background-color: #5cb85c; color: white; font-weight: bold;" @onclick="AbrirVistaPrevia" disabled="@(!clientesSeleccionados.Any())">
+                <i class="bi bi-eye-fill"></i> Facturación - Vista previa (@clientesSeleccionados.Count)
+            </button>
+            <button class="btn" style="background-color: #28a745; color: white;" @onclick="SeleccionarTodos">
+                <i class="bi bi-check-all"></i> Seleccionar Todos
+            </button>
+            <button class="btn" style="background-color: #1e7e34; color: white;" @onclick="DeseleccionarTodos">
+                <i class="bi bi-x"></i> Limpiar Selección
+            </button>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-header" style="background-color: #d4edda;">
+            <h5 class="mb-0"><i class="bi bi-funnel"></i> Filtros</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <label class="form-label">Buscar Cliente</label>
+                    <input type="text" class="form-control" @bind="busqueda" @bind:event="oninput" placeholder="Nombre, NIF, Email..." />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Tipo de Cliente</label>
+                    <select class="form-select" @bind="filtroTipo">
+                        <option value="">Todos</option>
+                        <option value="@TipoCliente.Particular">Particular</option>
+                        <option value="@TipoCliente.Empresa">Empresa</option>
+                        <option value="@TipoCliente.Agencia">Agencia</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Periodicidad</label>
+                    <select class="form-select" @bind="filtroPeriodicidad">
+                        <option value="">Todas</option>
+                        <option value="@PeriodicidadFacturacion.Mensual">Mensual</option>
+                        <option value="@PeriodicidadFacturacion.Trimestral">Trimestral</option>
+                        <option value="@PeriodicidadFacturacion.Semestral">Semestral</option>
+                        <option value="@PeriodicidadFacturacion.Anual">Anual</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Estado Configuración</label>
+                    <select class="form-select" @bind="filtroConfiguracion">
+                        <option value="">Todos los Clientes</option>
+                        <option value="configurado">Con Configuración</option>
+                        <option value="sin_configurar">Sin Configurar</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estadísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white" style="background-color: #28a745;">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-people"></i> Total Clientes</h6>
+                    <h3 class="mb-0">@ClientesFiltrados.Count()</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white" style="background-color: #5cb85c;">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-check-circle"></i> Con Configuración</h6>
+                    <h3 class="mb-0">@ClientesFiltrados.Count(c => TieneConfiguracion(c))</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white" style="background-color: #1e7e34;">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-check2-square"></i> Seleccionados</h6>
+                    <h3 class="mb-0">@clientesSeleccionados.Count</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white" style="background-color: #155724;">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-cash-coin"></i> Total Estimado</h6>
+                    <h3 class="mb-0">@ObtenerTotalEstimado().ToString("C2")</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Clientes -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead style="background-color: #d4edda;">
+                        <tr>
+                            <th width="50">
+                                <input type="checkbox" class="form-check-input" 
+                                       @onchange="ToggleTodosVisible" 
+                                       checked="@todosMarcados" />
+                            </th>
+                            <th>Cliente</th>
+                            <th>NIF</th>
+                            <th>Concepto/Producto</th>
+                            <th>Periodicidad</th>
+                            <th class="text-end">Importe</th>
+                            <th>Última Facturación</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (clientes == null)
+                        {
+                            <tr>
+                                <td colspan="9" class="text-center">
+                                    <div class="spinner-border text-success" role="status">
+                                        <span class="visually-hidden">Cargando...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        else if (!ClientesFiltrados.Any())
+                        {
+                            <tr>
+                                <td colspan="8" class="text-center">
+                                    <i class="bi bi-inbox"></i> No hay clientes que coincidan con los filtros
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var cliente in ClientesFiltrados)
+                            {
+                                <tr class="@(clientesSeleccionados.Contains(cliente.Id) ? "table-success" : "")">
+                                    <td>
+                                        <input type="checkbox" class="form-check-input" 
+                                               checked="@clientesSeleccionados.Contains(cliente.Id)"
+                                               @onchange="() => ToggleCliente(cliente.Id)" />
+                                    </td>
+                                    <td>
+                                        <strong>@(cliente.Tipo == TipoCliente.Particular ? $"{cliente.Nombre} {cliente.Apellidos}" : cliente.NombreEmpresa)</strong>
+                                    </td>
+                                    <td>@cliente.NIF</td>
+                                    <td>
+                                        @if (cliente.ProductoRecurrente != null)
+                                        {
+                                            <span class="badge bg-success">@cliente.ProductoRecurrente.Nombre</span>
+                                        }
+                                        else if (!string.IsNullOrEmpty(cliente.ConceptoRecurrente))
+                                        {
+                                            <span>@cliente.ConceptoRecurrente</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted"><i>Sin configurar</i></span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (cliente.Periodicidad.HasValue)
+                                        {
+                                            <span class="badge" style="background-color: #5cb85c;">@cliente.Periodicidad</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (cliente.ImporteRecurrente.HasValue)
+                                        {
+                                            <strong>@cliente.ImporteRecurrente.Value.ToString("C2")</strong>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (cliente.UltimaFacturacion.HasValue)
+                                        {
+                                            <span>@cliente.UltimaFacturacion.Value.ToString("dd/MM/yyyy")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Nunca</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm" style="color: #28a745; border-color: #28a745;" 
+                                                @onclick="() => ConfigurarCliente(cliente.Id)" title="Configurar">
+                                            <i class="bi bi-gear"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Vista Previa -->
+@if (mostrarVistaPrevia)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #28a745; color: white;">
+                    <h5 class="modal-title">
+                        <i class="bi bi-eye-fill"></i> Vista Previa de Facturación Masiva
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarVistaPrevia"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+                        <strong><i class="bi bi-info-circle"></i> Resumen:</strong>
+                        Se van a generar <strong>@clientesSeleccionados.Count facturas</strong> por un total estimado de 
+                        <strong>@ObtenerTotalEstimado().ToString("C2")</strong>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Fecha de Emisión:</strong></label>
+                        <input type="date" class="form-control" @bind="fechaEmisionMasiva" />
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead style="background-color: #d4edda;">
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th>Concepto</th>
+                                    <th class="text-end">Importe</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var clienteId in clientesSeleccionados)
+                                {
+                                    var cliente = clientes?.FirstOrDefault(c => c.Id == clienteId);
+                                    if (cliente != null)
+                                    {
+                                        <tr>
+                                            <td>@(cliente.Tipo == TipoCliente.Particular ? $"{cliente.Nombre} {cliente.Apellidos}" : cliente.NombreEmpresa)</td>
+                                            <td>
+                                                @if (cliente.ProductoRecurrente != null)
+                                                {
+                                                    <span>@cliente.ProductoRecurrente.Nombre</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>@cliente.ConceptoRecurrente</span>
+                                                }
+                                            </td>
+                                            <td class="text-end"><strong>@(cliente.ImporteRecurrente?.ToString("C2") ?? "0,00 €")</strong></td>
+                                            <td>
+                                                @if (TieneConfiguracion(cliente))
+                                                {
+                                                    <span class="badge bg-success">Listo</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-warning text-dark">Revisar</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                            <tfoot style="background-color: #d4edda;">
+                                <tr>
+                                    <td colspan="2"><strong>TOTAL:</strong></td>
+                                    <td class="text-end"><strong>@ObtenerTotalEstimado().ToString("C2")</strong></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarVistaPrevia">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-success" @onclick="GenerarFacturasMasivas" disabled="@generando">
+                        @if (generando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            <span>Generando...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-lightning-charge"></i>
+                            <span>Generar @clientesSeleccionados.Count Facturas</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+<!-- Modal de Configuración Cliente -->
+@if (mostrarModalConfiguracion && clienteConfigurando != null)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #5cb85c; color: white;">
+                    <h5 class="modal-title">
+                        <i class="bi bi-gear"></i> Configurar Facturación para @(clienteConfigurando.Tipo == TipoCliente.Particular ? $"{clienteConfigurando.Nombre} {clienteConfigurando.Apellidos}" : clienteConfigurando.NombreEmpresa)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalConfiguracion"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+                        <i class="bi bi-info-circle"></i> Configura el concepto e importe para que este cliente aparezca en la facturación masiva
+                    </div>
+
+                    <EditForm Model="@clienteConfigurando" OnValidSubmit="GuardarConfiguracion">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Producto/Servicio</label>
+                                <InputSelect @bind-Value="clienteConfigurando.ProductoRecurrenteId" class="form-select">
+                                    <option value="">-- Seleccionar Producto --</option>
+                                    @if (productos != null)
+                                    {
+                                        @foreach (var producto in productos)
+                                        {
+                                            <option value="@producto.Id">@producto.Nombre (@producto.PrecioUnitario.ToString("C2"))</option>
+                                        }
+                                    }
+                                </InputSelect>
+                                <small class="text-muted">Opcional: Deja vacío si usarás concepto manual</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Concepto Manual</label>
+                                <InputText @bind-Value="clienteConfigurando.ConceptoRecurrente" class="form-control" 
+                                           placeholder="Ej: Servicio de mantenimiento mensual" />
+                                <small class="text-muted">Se usa si no hay producto seleccionado</small>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Importe *</label>
+                                <InputNumber @bind-Value="clienteConfigurando.ImporteRecurrente" class="form-control" step="0.01" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Periodicidad *</label>
+                                <InputSelect @bind-Value="clienteConfigurando.Periodicidad" class="form-select">
+                                    <option value="">-- Seleccionar --</option>
+                                    <option value="@PeriodicidadFacturacion.Mensual">Mensual</option>
+                                    <option value="@PeriodicidadFacturacion.Bimensual">Bimensual</option>
+                                    <option value="@PeriodicidadFacturacion.Trimestral">Trimestral</option>
+                                    <option value="@PeriodicidadFacturacion.Semestral">Semestral</option>
+                                    <option value="@PeriodicidadFacturacion.Anual">Anual</option>
+                                    <option value="@PeriodicidadFacturacion.Puntual">Puntual</option>
+                                </InputSelect>
+                            </div>
+                        </div>
+
+                        @if (clienteConfigurando.UltimaFacturacion.HasValue)
+                        {
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle"></i> Última facturación: <strong>@clienteConfigurando.UltimaFacturacion.Value.ToString("dd/MM/yyyy")</strong>
+                            </div>
+                        }
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-circle"></i> Guardar Configuración
+                            </button>
+                            <button type="button" class="btn btn-secondary" @onclick="CerrarModalConfiguracion">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private List<Cliente>? clientes;
+    private List<Producto>? productos;
+    private HashSet<int> clientesSeleccionados = new();
+    private string busqueda = "";
+    private string filtroTipo = "";
+    private string filtroPeriodicidad = "";
+    private string filtroConfiguracion = "";
+    private bool todosMarcados = false;
+    private bool mostrarVistaPrevia = false;
+    private bool mostrarModalConfiguracion = false;
+    private bool generando = false;
+    private Cliente? clienteConfigurando;
+    private DateTime fechaEmisionMasiva = DateTime.Today;
+
+    private IEnumerable<Cliente> ClientesFiltrados
+    {
+        get
+        {
+            if (clientes == null) return Enumerable.Empty<Cliente>();
+
+            var resultado = clientes.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(busqueda))
+            {
+                resultado = resultado.Where(c =>
+                    (c.Nombre?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.Apellidos?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.NombreEmpresa?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.NIF?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.Email?.Contains(busqueda, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            if (!string.IsNullOrWhiteSpace(filtroTipo))
+            {
+                if (Enum.TryParse<TipoCliente>(filtroTipo, out var tipo))
+                {
+                    resultado = resultado.Where(c => c.Tipo == tipo);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(filtroPeriodicidad))
+            {
+                if (Enum.TryParse<PeriodicidadFacturacion>(filtroPeriodicidad, out var periodicidad))
+                {
+                    resultado = resultado.Where(c => c.Periodicidad == periodicidad);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(filtroConfiguracion))
+            {
+                if (filtroConfiguracion == "configurado")
+                {
+                    resultado = resultado.Where(c => TieneConfiguracion(c));
+                }
+                else if (filtroConfiguracion == "sin_configurar")
+                {
+                    resultado = resultado.Where(c => !TieneConfiguracion(c));
+                }
+            }
+
+            return resultado.Where(c => c.Activo).OrderBy(c => c.Nombre ?? c.NombreEmpresa);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        clientes = await ClienteService.ObtenerTodosAsync();
+        productos = await ProductoService.ObtenerTodosAsync();
+    }
+
+    private void ToggleCliente(int clienteId)
+    {
+        if (clientesSeleccionados.Contains(clienteId))
+        {
+            clientesSeleccionados.Remove(clienteId);
+        }
+        else
+        {
+            clientesSeleccionados.Add(clienteId);
+        }
+        ActualizarEstadoTodosMarcados();
+    }
+
+    private void ToggleTodosVisible(ChangeEventArgs e)
+    {
+        var marcado = (bool?)e.Value ?? false;
+        if (marcado)
+        {
+            SeleccionarTodos();
+        }
+        else
+        {
+            DeseleccionarTodos();
+        }
+    }
+
+    private void SeleccionarTodos()
+    {
+        clientesSeleccionados = ClientesFiltrados
+            .Where(c => TieneConfiguracion(c))
+            .Select(c => c.Id)
+            .ToHashSet();
+        ActualizarEstadoTodosMarcados();
+    }
+
+    private void DeseleccionarTodos()
+    {
+        clientesSeleccionados.Clear();
+        ActualizarEstadoTodosMarcados();
+    }
+
+    private void ActualizarEstadoTodosMarcados()
+    {
+        var clientesValidos = ClientesFiltrados.Where(c => TieneConfiguracion(c)).ToList();
+        todosMarcados = clientesValidos.Any() && clientesValidos.All(c => clientesSeleccionados.Contains(c.Id));
+    }
+
+    private bool TieneConfiguracion(Cliente cliente)
+    {
+        return cliente.ImporteRecurrente.HasValue && cliente.ImporteRecurrente.Value > 0 &&
+               (!string.IsNullOrEmpty(cliente.ConceptoRecurrente) || cliente.ProductoRecurrenteId.HasValue);
+    }
+
+    private decimal ObtenerTotalEstimado()
+    {
+        if (clientes == null) return 0;
+        return clientes
+            .Where(c => clientesSeleccionados.Contains(c.Id))
+            .Sum(c => c.ImporteRecurrente ?? 0);
+    }
+
+    private void AbrirVistaPrevia()
+    {
+        mostrarVistaPrevia = true;
+    }
+
+    private void CerrarVistaPrevia()
+    {
+        mostrarVistaPrevia = false;
+    }
+
+    private async Task ConfigurarCliente(int clienteId)
+    {
+        clienteConfigurando = await ClienteService.ObtenerPorIdAsync(clienteId);
+        if (clienteConfigurando != null)
+        {
+            mostrarModalConfiguracion = true;
+        }
+    }
+
+    private void CerrarModalConfiguracion()
+    {
+        mostrarModalConfiguracion = false;
+        clienteConfigurando = null;
+    }
+
+    private async Task GuardarConfiguracion()
+    {
+        if (clienteConfigurando != null)
+        {
+            try
+            {
+                await ClienteService.ActualizarAsync(clienteConfigurando.Id, clienteConfigurando);
+                await CargarDatos();
+                CerrarModalConfiguracion();
+                await JSRuntime.InvokeVoidAsync("alert", "Configuración guardada correctamente");
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error al guardar: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task GenerarFacturasMasivas()
+    {
+        generando = true;
+        StateHasChanged();
+
+        try
+        {
+            var empresaId = await TenantService.GetEmpresaIdAsync();
+            if (!empresaId.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se pudo obtener la empresa activa");
+                return;
+            }
+
+            int facturasCreadas = 0;
+            var errores = new List<string>();
+
+            foreach (var clienteId in clientesSeleccionados)
+            {
+                var cliente = clientes?.FirstOrDefault(c => c.Id == clienteId);
+                if (cliente == null || !cliente.ImporteRecurrente.HasValue) continue;
+
+                try
+                {
+                    var factura = new Factura
+                    {
+                        TipoFactura = TipoFactura.Venta,
+                        ClienteId = cliente.Id,
+                        EmpresaId = empresaId.Value,
+                        FechaEmision = fechaEmisionMasiva,
+                        Estado = EstadoFactura.Emitida,
+                        NumeroFactura = await FacturaService.GenerarNumeroAsync(TipoFactura.Venta),
+                        Concepto = cliente.ConceptoRecurrente, // Concepto del cliente en la factura
+                        FormaPago = cliente.FormaPago, // Forma de pago del cliente
+                        Lineas = new List<LineaDocumento>()
+                    };
+
+                    // Crear línea de factura
+                    var linea = new LineaDocumento
+                    {
+                        Cantidad = 1,
+                        PrecioUnitario = cliente.ImporteRecurrente.Value,
+                        Descuento = 0,
+                        IVA = 21 // Por defecto, se puede configurar
+                    };
+
+                    if (cliente.ProductoRecurrenteId.HasValue && cliente.ProductoRecurrente != null)
+                    {
+                        linea.ProductoId = cliente.ProductoRecurrenteId;
+                        // Usar la descripción del producto si existe, si no el nombre
+                        linea.Descripcion = !string.IsNullOrWhiteSpace(cliente.ProductoRecurrente.Descripcion) 
+                            ? cliente.ProductoRecurrente.Descripcion 
+                            : cliente.ProductoRecurrente.Nombre;
+                    }
+                    else
+                    {
+                        // Si no hay producto, usar el concepto como descripción
+                        linea.Descripcion = cliente.ConceptoRecurrente ?? "Servicio";
+                    }
+
+                    linea.Total = linea.Cantidad * linea.PrecioUnitario * (1 - linea.Descuento / 100) * (1 + linea.IVA / 100);
+                    factura.Lineas.Add(linea);
+
+                    // Calcular total de la factura (las propiedades Subtotal y TotalIVA se calculan automáticamente)
+                    var subtotal = factura.Lineas.Sum(l => l.Cantidad * l.PrecioUnitario * (1 - l.Descuento / 100));
+                    var totalIVA = factura.Lineas.Sum(l => l.Cantidad * l.PrecioUnitario * (1 - l.Descuento / 100) * l.IVA / 100);
+                    factura.Total = subtotal + totalIVA;
+
+                    await FacturaService.CrearAsync(factura);
+
+                    // Actualizar fecha de última facturación
+                    cliente.UltimaFacturacion = DateTime.Now;
+                    await ClienteService.ActualizarAsync(cliente.Id, cliente);
+
+                    facturasCreadas++;
+                }
+                catch (Exception ex)
+                {
+                    errores.Add($"{cliente.Nombre ?? cliente.NombreEmpresa}: {ex.Message}");
+                }
+            }
+
+            generando = false;
+            CerrarVistaPrevia();
+            DeseleccionarTodos();
+            await CargarDatos();
+
+            var mensaje = $"✅ Se generaron {facturasCreadas} facturas correctamente.";
+            if (errores.Any())
+            {
+                mensaje += $"\n\n❌ Errores ({errores.Count}):\n" + string.Join("\n", errores);
+            }
+
+            await JSRuntime.InvokeVoidAsync("alert", mensaje);
+        }
+        catch (Exception ex)
+        {
+            generando = false;
+            await JSRuntime.InvokeVoidAsync("alert", $"Error general: {ex.Message}");
+        }
+    }
+}

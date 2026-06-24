@@ -1,0 +1,424 @@
+@page "/presupuestos/nuevo"
+@page "/presupuestos/editar/{id:int}"
+@using FactioX.Models
+@using FactioX.Services
+@inject IPresupuestoService PresupuestoService
+@inject IClienteService ClienteService
+@inject IProductoService ProductoService
+@inject IConfiguracionEmpresaService ConfiguracionEmpresaService
+@inject IPresupuestoPdfService PresupuestoPdfService
+@inject IEmailService EmailService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>@(Id.HasValue ? "Editar" : "Nuevo") Presupuesto</h1>
+        <div class="d-flex gap-2">
+            @if (Id.HasValue)
+            {
+                <button type="button" class="btn btn-success" @onclick="EnviarPorEmail" title="Enviar por Email">
+                    <i class="bi bi-envelope-fill"></i> Enviar Email
+                </button>
+                
+                <button type="button" class="btn btn-info" @onclick="Imprimir" title="Imprimir">
+                    <i class="bi bi-printer-fill"></i> Imprimir
+                </button>
+            }
+            <button type="button" class="btn btn-outline-secondary" @onclick="Cancelar">
+                <i class="bi bi-arrow-left"></i> Volver
+            </button>
+        </div>
+    </div>
+
+    <EditForm Model="@presupuesto" OnValidSubmit="GuardarPresupuesto">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>Datos del Presupuesto</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="cliente" class="form-label">Cliente *</label>
+                                <InputSelect id="cliente" class="form-select" @bind-Value="presupuesto.ClienteId">
+                                    <option value="0">Seleccione un cliente...</option>
+                                    @if (clientes != null)
+                                    {
+                                        @foreach (var cliente in clientes)
+                                        {
+                                            var nombreCliente = cliente.Tipo == TipoCliente.Particular 
+                                                ? $"{cliente.Nombre} {cliente.Apellidos}".Trim()
+                                                : cliente.NombreEmpresa;
+                                            <option value="@cliente.Id">@nombreCliente</option>
+                                        }
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="fecha" class="form-label">Fecha *</label>
+                                <InputDate id="fecha" class="form-control" @bind-Value="presupuesto.Fecha" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="estado" class="form-label">Estado</label>
+                                <InputSelect id="estado" class="form-select" @bind-Value="presupuesto.Estado">
+                                    @foreach (EstadoPresupuesto estado in Enum.GetValues(typeof(EstadoPresupuesto)))
+                                    {
+                                        <option value="@estado">@estado</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="fechaValidez" class="form-label">Válido hasta</label>
+                                <InputDate id="fechaValidez" class="form-control" @bind-Value="presupuesto.FechaValidez" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>Líneas del Presupuesto</h5>
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="AgregarLinea">
+                            <i class="bi bi-plus"></i> Agregar Línea
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        @if (presupuesto.Lineas.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 30%">Producto/Servicio</th>
+                                            <th style="width: 20%">Descripción</th>
+                                            <th style="width: 10%" class="text-end">Cant.</th>
+                                            <th style="width: 12%" class="text-end">Precio</th>
+                                            <th style="width: 10%" class="text-end">Desc. %</th>
+                                            <th style="width: 10%" class="text-end">IVA %</th>
+                                            <th style="width: 13%" class="text-end">Total</th>
+                                            <th style="width: 5%"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @for (int i = 0; i < presupuesto.Lineas.Count; i++)
+                                        {
+                                            var index = i;
+                                            var linea = presupuesto.Lineas[index];
+                                            <tr>
+                                                <td>
+                                                    <InputSelect class="form-select form-select-sm" Value="@linea.ProductoId" ValueChanged="@((int? value) => CambiarProducto(index, value))" ValueExpression="@(() => linea.ProductoId)">
+                                                        <option value="0">Seleccionar...</option>
+                                                        @if (productos != null)
+                                                        {
+                                                            @foreach (var producto in productos)
+                                                            {
+                                                                <option value="@producto.Id">@producto.Nombre</option>
+                                                            }
+                                                        }
+                                                    </InputSelect>
+                                                </td>
+                                                <td>
+                                                    <input type="text" class="form-control form-control-sm" @bind="linea.Descripcion" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.Cantidad" @bind:after="CalcularTotales" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.PrecioUnitario" @bind:after="CalcularTotales" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.Descuento" @bind:after="CalcularTotales" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.IVA" @bind:after="CalcularTotales" />
+                                                </td>
+                                                <td class="text-end align-middle">
+                                                    @linea.Total.ToString("C2")
+                                                </td>
+                                                <td>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => EliminarLinea(index)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No hay líneas agregadas</p>
+                        }
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>Información Adicional</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="notas" class="form-label">Notas</label>
+                            <InputTextArea id="notas" class="form-control" rows="3" @bind-Value="presupuesto.Notas" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="condiciones" class="form-label">Condiciones de Pago</label>
+                            <InputTextArea id="condiciones" class="form-control" rows="2" @bind-Value="presupuesto.CondicionesPago" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card mb-3 sticky-top" style="top: 20px;">
+                    <div class="card-header bg-primary text-white">
+                        <h5>Resumen</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Base Imponible:</span>
+                            <strong>@presupuesto.BaseImponible.ToString("C2")</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>IVA:</span>
+                            <strong>@presupuesto.TotalIVA.ToString("C2")</strong>
+                        </div>
+                        <hr />
+                        <div class="d-flex justify-content-between">
+                            <strong>Total:</strong>
+                            <strong class="fs-4 text-primary">@presupuesto.Total.ToString("C2")</strong>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="submit" class="btn btn-primary w-100 mb-2">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                        <button type="button" class="btn btn-secondary w-100" @onclick="Cancelar">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private Presupuesto presupuesto = new();
+    private List<Cliente>? clientes;
+    private List<Producto>? productos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        clientes = await ClienteService.ObtenerTodosAsync();
+        productos = await ProductoService.ObtenerActivosAsync();
+
+        if (Id.HasValue)
+        {
+            var presupuestoExistente = await PresupuestoService.ObtenerPorIdAsync(Id.Value);
+            if (presupuestoExistente != null)
+            {
+                presupuesto = presupuestoExistente;
+                CalcularTotales();
+            }
+            else
+            {
+                Navigation.NavigateTo("/presupuestos");
+            }
+        }
+    }
+
+    private void AgregarLinea()
+    {
+        presupuesto.Lineas.Add(new LineaDocumento
+        {
+            Cantidad = 1,
+            IVA = 21
+        });
+        CalcularTotales();
+    }
+
+    private void EliminarLinea(int index)
+    {
+        presupuesto.Lineas.RemoveAt(index);
+        CalcularTotales();
+    }
+
+    private void CalcularTotales()
+    {
+        foreach (var linea in presupuesto.Lineas)
+        {
+            linea.CalcularImportes();
+        }
+        StateHasChanged();
+    }
+
+    private void CambiarProducto(int index, int? productoId)
+    {
+        var linea = presupuesto.Lineas[index];
+        if (!productoId.HasValue || productoId == 0)
+            return;
+            
+        var producto = productos?.FirstOrDefault(p => p.Id == productoId.Value);
+        if (producto != null)
+        {
+            linea.ProductoId = producto.Id;
+            linea.Producto = producto;
+            linea.Descripcion = producto.Descripcion ?? producto.Nombre;
+            linea.PrecioUnitario = producto.PrecioUnitario;
+            linea.IVA = producto.IVA;
+        }
+        
+        CalcularTotales();
+    }
+
+    private async Task GuardarPresupuesto()
+    {
+        if (Id.HasValue)
+        {
+            await PresupuestoService.ActualizarAsync(Id.Value, presupuesto);
+            Navigation.NavigateTo("/presupuestos");
+        }
+        else
+        {
+            var presupuestoCreado = await PresupuestoService.CrearAsync(presupuesto);
+            // Redirigir a la página de edición del presupuesto recién creado
+            Navigation.NavigateTo($"/presupuestos/editar/{presupuestoCreado.Id}");
+        }
+    }
+
+    private async Task Imprimir()
+    {
+        if (!Id.HasValue || presupuesto.Id == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe guardar el presupuesto antes de imprimirlo.");
+            return;
+        }
+
+        var presupuestoCompleto = await PresupuestoService.ObtenerPorIdAsync(presupuesto.Id);
+        
+        if (presupuestoCompleto == null || presupuestoCompleto.Cliente == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error al cargar los datos del presupuesto.");
+            return;
+        }
+
+        var config = await ConfiguracionEmpresaService.ObtenerConfiguracionAsync();
+        byte[] pdfBytes = PresupuestoPdfService.GenerarPresupuestoPdf(presupuestoCompleto, presupuestoCompleto.Cliente, config, paraEmail: true);
+        string base64Pdf = Convert.ToBase64String(pdfBytes);
+        
+        await JSRuntime.InvokeVoidAsync("eval", 
+            "var byteCharacters = atob('" + base64Pdf + "');" +
+            "var byteNumbers = new Array(byteCharacters.length);" +
+            "for (var i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }" +
+            "var byteArray = new Uint8Array(byteNumbers);" +
+            "var blob = new Blob([byteArray], {type: 'application/pdf'});" +
+            "var url = URL.createObjectURL(blob);" +
+            "var iframe = document.createElement('iframe');" +
+            "iframe.style.position = 'fixed';" +
+            "iframe.style.right = '0';" +
+            "iframe.style.bottom = '0';" +
+            "iframe.style.width = '0';" +
+            "iframe.style.height = '0';" +
+            "iframe.style.border = 'none';" +
+            "iframe.src = url;" +
+            "document.body.appendChild(iframe);" +
+            "iframe.onload = function() { setTimeout(function() { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 250); };"
+        );
+    }
+    
+    private async Task EnviarPorEmail()
+    {
+        if (!Id.HasValue || presupuesto.Id == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe guardar el presupuesto antes de enviarlo por email.");
+            return;
+        }
+
+        try
+        {
+            var presupuestoCompleto = await PresupuestoService.ObtenerPorIdAsync(presupuesto.Id);
+            
+            if (presupuestoCompleto == null || presupuestoCompleto.Cliente == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error: El presupuesto no tiene un cliente asignado.");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(presupuestoCompleto.Cliente.Email))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error: El cliente no tiene un email configurado en su ficha.");
+                return;
+            }
+
+            var config = await ConfiguracionEmpresaService.ObtenerConfiguracionAsync();
+            byte[] pdfBytes = PresupuestoPdfService.GenerarPresupuestoPdf(presupuestoCompleto, presupuestoCompleto.Cliente, config, paraEmail: true);
+
+            var nombreEmpresa = config?.NombreEmpresa ?? "FactioX";
+            var asunto = $"Presupuesto {presupuestoCompleto.Numero} - {nombreEmpresa}";
+            
+            var cuerpoBuilder = new System.Text.StringBuilder();
+            cuerpoBuilder.AppendLine("<html>");
+            cuerpoBuilder.AppendLine("<body style='font-family: Arial, sans-serif;'>");
+            cuerpoBuilder.AppendLine($"<h2>Presupuesto {presupuestoCompleto.Numero}</h2>");
+            cuerpoBuilder.AppendLine($"<p>Estimado/a {presupuestoCompleto.Cliente.Nombre},</p>");
+            cuerpoBuilder.AppendLine($"<p>Adjuntamos el presupuesto <strong>{presupuestoCompleto.Numero}</strong> con fecha {presupuestoCompleto.Fecha:dd/MM/yyyy}.</p>");
+            if (presupuestoCompleto.FechaValidez.HasValue)
+            {
+                cuerpoBuilder.AppendLine($"<p><strong>Válido hasta:</strong> {presupuestoCompleto.FechaValidez.Value:dd/MM/yyyy}</p>");
+            }
+            cuerpoBuilder.AppendLine($"<p><strong>Importe total:</strong> {presupuestoCompleto.Total:C2}</p>");
+            cuerpoBuilder.AppendLine("<p>Para cualquier consulta o para aceptar el presupuesto, no dude en contactarnos.</p>");
+            cuerpoBuilder.AppendLine("<br/>");
+            cuerpoBuilder.AppendLine($"<p>Atentamente,<br/>{nombreEmpresa}</p>");
+            if (!string.IsNullOrEmpty(config?.Email))
+            {
+                cuerpoBuilder.AppendLine($"<p style='color: #666; font-size: 12px;'>Email: {config.Email}</p>");
+            }
+            if (!string.IsNullOrEmpty(config?.Telefono))
+            {
+                cuerpoBuilder.AppendLine($"<p style='color: #666; font-size: 12px;'>Teléfono: {config.Telefono}</p>");
+            }
+            cuerpoBuilder.AppendLine("</body>");
+            cuerpoBuilder.AppendLine("</html>");
+            var cuerpo = cuerpoBuilder.ToString();
+
+            var nombreArchivo = $"Presupuesto_{presupuestoCompleto.Numero.Replace("/", "-")}_{DateTime.Now:yyyyMMdd}.pdf";
+
+            string? cc = !string.IsNullOrEmpty(presupuestoCompleto.Cliente.EmailSecundario) 
+                ? presupuestoCompleto.Cliente.EmailSecundario 
+                : null;
+
+            await EmailService.EnviarEmailConAdjunto(
+                presupuestoCompleto.Cliente.Email,
+                asunto,
+                cuerpo,
+                pdfBytes,
+                nombreArchivo,
+                cc
+            );
+
+            await JSRuntime.InvokeVoidAsync("alert", $"Presupuesto enviado correctamente a {presupuestoCompleto.Cliente.Email}");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al enviar email: {ex.Message}");
+        }
+    }
+
+    private void Cancelar()
+    {
+        Navigation.NavigateTo("/presupuestos");
+    }
+}

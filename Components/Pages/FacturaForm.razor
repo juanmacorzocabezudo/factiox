@@ -1,0 +1,1114 @@
+@page "/facturas/nuevo"
+@page "/facturas/editar/{id:int}"
+@using FactioX.Models
+@using FactioX.Services
+@inject IFacturaService FacturaService
+@inject IClienteService ClienteService
+@inject IProductoService ProductoService
+@inject IFormaPagoPersonalizadaService FormaPagoService
+@inject IConfiguracionEmpresaService ConfiguracionEmpresaService
+@inject IFacturaPdfService FacturaPdfService
+@inject IEmailService EmailService
+@inject IFacturaEService FacturaEService
+@inject IFirmaDigitalService FirmaDigitalService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>@(Id.HasValue ? "Editar" : "Nueva") Factura</h1>
+        <div class="d-flex gap-2">
+            @if (Id.HasValue && factura.Id > 0)
+            {
+                <button type="button" class="btn btn-success" @onclick="EnviarPorEmail" title="Enviar por Email">
+                    <i class="bi bi-envelope-fill"></i> Enviar Email
+                </button>
+                
+                <!-- Dropdown Facturae -->
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-warning dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-file-earmark-code"></i> Facturae
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" @onclick="ExportarXML"><i class="bi bi-file-earmark-code me-2"></i>Exportar XML</a></li>
+                        <li><a class="dropdown-item" href="#" @onclick="ExportarXMLFirmado"><i class="bi bi-shield-check me-2"></i>XML Firmado</a></li>
+                    </ul>
+                </div>
+                
+                <button type="button" class="btn btn-outline-success" @onclick="() => GestionarPagos(factura.Id)" title="Gestionar Pagos">
+                    <i class="bi bi-cash-coin"></i> Gestionar Pagos
+                </button>
+                
+                <button type="button" class="btn btn-info" @onclick="Imprimir" title="Imprimir">
+                    <i class="bi bi-printer-fill"></i> Imprimir
+                </button>
+            }
+            <button type="button" class="btn btn-outline-secondary" @onclick="Cancelar">
+                <i class="bi bi-arrow-left"></i> Volver
+            </button>
+        </div>
+    </div>
+
+    <EditForm Model="@factura" OnValidSubmit="GuardarFactura">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>Datos de la Factura</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label for="cliente" class="form-label">Cliente *</label>
+                                <div class="input-group">
+                                    <select id="cliente" class="form-select" value="@factura.ClienteId" @onchange="@((ChangeEventArgs e) => OnClienteChangedAsync(int.Parse(e.Value?.ToString() ?? "0")))">
+                                        <option value="0">Seleccione un cliente...</option>
+                                        @if (clientes != null)
+                                        {
+                                            @foreach (var cliente in clientes)
+                                            {
+                                                var nombreCliente = cliente.Tipo == TipoCliente.Particular 
+                                                    ? $"{cliente.Nombre} {cliente.Apellidos}".Trim()
+                                                    : cliente.NombreEmpresa;
+                                                <option value="@cliente.Id">@nombreCliente</option>
+                                            }
+                                        }
+                                    </select>
+                                    @if (factura.ClienteId > 0)
+                                    {
+                                        <button type="button" class="btn btn-outline-primary" @onclick="VerCliente" title="Ver/Editar cliente">
+                                            <i class="bi bi-person-vcard"></i>
+                                        </button>
+                                    }
+                                    <button type="button" class="btn btn-outline-success" @onclick="CrearCliente" title="Crear nuevo cliente">
+                                        <i class="bi bi-person-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label for="fecha" class="form-label">Fecha Emisión *</label>
+                                <InputDate id="fecha" class="form-control" @bind-Value="factura.FechaEmision" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="fechaVencimiento" class="form-label">Fecha Vencimiento</label>
+                                <InputDate id="fechaVencimiento" class="form-control" @bind-Value="factura.FechaVencimiento" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="fechaOperacion" class="form-label">Fecha Operación</label>
+                                <InputDate id="fechaOperacion" class="form-control" @bind-Value="factura.FechaOperacion" />
+                                <small class="text-muted">Fecha real del servicio</small>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="estado" class="form-label">Estado</label>
+                                <InputSelect id="estado" class="form-select" @bind-Value="factura.Estado">
+                                    @foreach (EstadoFactura estado in Enum.GetValues(typeof(EstadoFactura)))
+                                    {
+                                        <option value="@estado">@estado</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label for="formaPago" class="form-label">Forma de Pago</label>
+                                <InputSelect id="formaPago" class="form-control" @bind-Value="factura.FormaPagoPersonalizadaId">
+                                    <option value="">Seleccione...</option>
+                                    @if (formasPago != null && formasPago.Any())
+                                    {
+                                        @foreach (var forma in formasPago)
+                                        {
+                                            <option value="@forma.Id">@forma.Nombre @(forma.EsPredefinido ? "" : "(Personalizada)")</option>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <option value="" disabled>⚠️ Cargando formas de pago...</option>
+                                    }
+                                </InputSelect>
+                                <small class="text-muted d-block">
+                                    <a href="/configuracion/formas-pago" target="_blank" class="text-decoration-none">
+                                        <i class="bi bi-gear"></i> Gestionar formas de pago
+                                    </a>
+                                    @if (formasPago != null && formasPago.Any())
+                                    {
+                                        <span class="ms-2 badge bg-success">@formasPago.Count disponibles</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="ms-2 badge bg-warning text-dark">⚠️ No hay formas de pago cargadas</span>
+                                    }
+                                </small>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="periodoInicio" class="form-label">Período Inicio</label>
+                                <InputDate id="periodoInicio" class="form-control" @bind-Value="factura.FechaPeriodoInicio" />
+                                <small class="text-muted">Para servicios periódicos</small>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="periodoFin" class="form-label">Período Fin</label>
+                                <InputDate id="periodoFin" class="form-control" @bind-Value="factura.FechaPeriodoFin" />
+                                <small class="text-muted">Para servicios periódicos</small>
+                            </div>
+                            @if (factura.Estado == EstadoFactura.Pagada)
+                            {
+                                <div class="col-md-3 mb-3">
+                                    <label for="fechaPago" class="form-label">Fecha de Pago</label>
+                                    <InputDate id="fechaPago" class="form-control" @bind-Value="factura.FechaPago" />
+                                </div>
+                            }
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label for="concepto" class="form-label">Concepto</label>
+                                <textarea id="concepto" class="form-control" rows="2" @bind="factura.Concepto" placeholder="Descripción del servicio facturado"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>Líneas de la Factura</h5>
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="AgregarLinea">
+                            <i class="bi bi-plus"></i> Agregar Línea
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        @if (factura.Lineas.Any())
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 30%">Producto/Servicio</th>
+                                            <th style="width: 20%">Descripción</th>
+                                            <th style="width: 10%" class="text-end">Cant.</th>
+                                            <th style="width: 12%" class="text-end">Precio</th>
+                                            <th style="width: 10%" class="text-end">Desc. %</th>
+                                            <th style="width: 10%" class="text-end">IVA %</th>
+                                            <th style="width: 13%" class="text-end">Total</th>
+                                            <th style="width: 5%"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @for (int i = 0; i < factura.Lineas.Count; i++)
+                                        {
+                                            var index = i;
+                                            var linea = factura.Lineas[index];
+                                            <tr>
+                                                <td>
+                                                    <InputSelect class="form-select form-select-sm" Value="@linea.ProductoId" ValueChanged="@((int? value) => CambiarProducto(index, value))" ValueExpression="@(() => linea.ProductoId)">
+                                                        <option value="0">Seleccionar...</option>
+                                                        @if (productos != null)
+                                                        {
+                                                            @foreach (var producto in productos)
+                                                            {
+                                                                <option value="@producto.Id">@producto.Nombre</option>
+                                                            }
+                                                        }
+                                                    </InputSelect>
+                                                </td>
+                                                <td>
+                                                    <input type="text" class="form-control form-control-sm" @bind="linea.Descripcion" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.Cantidad" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.PrecioUnitario" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.Descuento" />
+                                                </td>
+                                                <td>
+                                                    <input type="number" step="0.01" class="form-control form-control-sm text-end" @bind="linea.IVA" />
+                                                </td>
+                                                <td class="text-end align-middle">
+                                                    @linea.Total.ToString("C2")
+                                                </td>
+                                                <td>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => EliminarLinea(index)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No hay líneas agregadas</p>
+                        }
+                    </div>
+                </div>
+
+                <!-- Cálculos e Importes -->
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-calculator"></i> Cálculos e Importes</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Descuentos Generales (€)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="factura.DescuentosGenerales" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                                <small class="text-muted">Descuentos sobre el total de la factura</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Recargos Generales (€)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="factura.RecargosGenerales" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                                <small class="text-muted">Recargos adicionales (ej: recargo de equivalencia)</small>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Cargos Adicionales (€)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="factura.CargosAdicionales" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                                <small class="text-muted">Gastos de envío, gestión, etc.</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Concepto de Cargos</label>
+                                <input type="text" class="form-control" @bind="factura.ConceptoCargos" placeholder="Ej: Gastos de gestión" />
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Retención IRPF (%)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="factura.PorcentajeRetencion" @bind:event="oninput" @onchange="CalcularTotal" placeholder="0.00" />
+                                <small class="text-muted">Retención aplicable (opcional)</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Importe Retención (€)</label>
+                                <input type="number" step="0.01" class="form-control" value="@factura.ImporteRetencion.ToString("F2")" readonly style="background-color: #f8f9fa;" />
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info mt-3" role="alert">
+                            <small>
+                                <strong>Cálculo:</strong> Subtotal - Descuentos + Recargos + IVA + Cargos - Retención = <strong>@factura.Total.ToString("C2")</strong>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Datos para FacturaE -->
+                <div class="card mb-3">
+                    <div class="card-header" style="background-color: #9C27B0; color: white;">
+                        <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Datos para FacturaE</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Clase de Factura</label>
+                                <InputSelect class="form-select" @bind-Value="factura.ClaseFactura">
+                                    @foreach (var clase in Enum.GetValues<ClaseFactura>())
+                                    {
+                                        <option value="@clase">@clase</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Tipo de Factura</label>
+                                <InputSelect class="form-select" @bind-Value="factura.TipoFactura">
+                                    @foreach (var tipo in Enum.GetValues<TipoFactura>())
+                                    {
+                                        <option value="@tipo">@tipo</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Lugar de Expedición</label>
+                                <input type="text" class="form-control" @bind="factura.LugarExpedicion" placeholder="Ciudad" />
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">CP Expedición</label>
+                                <input type="text" class="form-control" @bind="factura.CodigoPostalExpedicion" placeholder="28001" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>Observaciones</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="notas" class="form-label">Notas / Observaciones</label>
+                            <InputTextArea id="notas" class="form-control" rows="3" @bind-Value="factura.Observaciones" placeholder="Observaciones adicionales sobre la factura" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card mb-3 sticky-top" style="top: 20px;">
+                    <div class="card-header bg-success text-white">
+                        <h5>Resumen</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Subtotal Líneas:</span>
+                            <strong>@factura.Subtotal.ToString("C2")</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Descuentos:</span>
+                            <strong class="text-danger">-@factura.DescuentosGenerales.ToString("C2")</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Recargos:</span>
+                            <strong class="text-success">+@factura.RecargosGenerales.ToString("C2")</strong>
+                        </div>
+                        <hr />
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Base Imponible:</span>
+                            <strong>@factura.BaseImponible.ToString("C2")</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>IVA:</span>
+                            <strong>@factura.TotalIVA.ToString("C2")</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Cargos Adicionales:</span>
+                            <strong>@factura.CargosAdicionales.ToString("C2")</strong>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Retención IRPF:</span>
+                            <strong class="text-danger">-@factura.ImporteRetencion.ToString("C2")</strong>
+                        </div>
+                        <hr />
+                        <div class="d-flex justify-content-between">
+                            <strong>Total:</strong>
+                            <strong class="fs-4 text-success">@factura.Total.ToString("C2")</strong>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="submit" class="btn btn-success w-100 mb-2">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                        <button type="button" class="btn btn-secondary w-100" @onclick="Cancelar">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </EditForm>
+</div>
+
+<!-- Modal para Gestionar Pagos -->
+@if (mostrarModalPagos && facturaParaPago != null)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-cash-coin"></i> Gestión de Pagos - @facturaParaPago.NumeroFactura
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalPagos"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Información de la factura -->
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h6 class="card-title"><i class="bi bi-file-text"></i> Resumen de Factura</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>Cliente:</strong><br />
+                                    @facturaParaPago.Cliente?.Nombre
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Total Factura:</strong><br />
+                                    <span class="h5">@facturaParaPago.Total.ToString("C2")</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Estado:</strong><br />
+                                    <span class="badge @ObtenerClaseEstado(facturaParaPago.Estado)">
+                                        @facturaParaPago.Estado
+                                    </span>
+                                </div>
+                            </div>
+                            <hr />
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <strong>Total Pagado:</strong><br />
+                                    <span class="text-success h5">@facturaParaPago.TotalPagado.ToString("C2")</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Pendiente:</strong><br />
+                                    <span class="@(facturaParaPago.PendientePago > 0 ? "text-danger" : "text-success") h5">
+                                        @facturaParaPago.PendientePago.ToString("C2")
+                                    </span>
+                                </div>
+                                <div class="col-md-4">
+                                    <strong>Progreso:</strong><br />
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" 
+                                             style="width: @((facturaParaPago.TotalPagado / facturaParaPago.Total * 100).ToString("F0"))%">
+                                            @((facturaParaPago.TotalPagado / facturaParaPago.Total * 100).ToString("F0"))%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Historial de pagos -->
+                    @if (facturaParaPago.Pagos?.Any() == true)
+                    {
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="bi bi-list-check"></i> Historial de Pagos</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Fecha</th>
+                                                <th>Forma de Pago</th>
+                                                <th class="text-end">Importe</th>
+                                                <th>Referencia</th>
+                                                <th>Notas</th>
+                                                <th>Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var pago in facturaParaPago.Pagos.OrderByDescending(p => p.FechaPago))
+                                            {
+                                                <tr>
+                                                    <td>@pago.FechaPago.ToString("dd/MM/yyyy")</td>
+                                                    <td>@(pago.FormaPagoPersonalizada?.Nombre ?? pago.FormaPago?.ToString() ?? "N/A")</td>
+                                                    <td class="text-end"><strong>@pago.Importe.ToString("C2")</strong></td>
+                                                    <td>@pago.Referencia</td>
+                                                    <td>@pago.Notas</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarPago(pago.Id)" title="Eliminar">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Formulario para nuevo pago -->
+                    @if (facturaParaPago.PendientePago > 0)
+                    {
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="bi bi-plus-circle"></i> Nuevo Pago</h6>
+                            </div>
+                            <div class="card-body">
+                                <EditForm Model="@nuevoPago" OnValidSubmit="RegistrarPago">
+                                    <DataAnnotationsValidator />
+                                    <ValidationSummary class="text-danger" />
+
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Fecha de Pago *</label>
+                                            <InputDate @bind-Value="nuevoPago.FechaPago" class="form-control" />
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Importe *</label>
+                                            <InputNumber @bind-Value="nuevoPago.Importe" class="form-control" step="0.01" />
+                                            <small class="text-muted">Pendiente: @facturaParaPago.PendientePago.ToString("C2")</small>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12 mb-3">
+                                            <label class="form-label">Forma de Pago</label>
+                                            <p class="form-control-plaintext">
+                                                <strong>@(facturaParaPago.FormaPagoPersonalizada?.Nombre ?? facturaParaPago.FormaPago?.ToString() ?? "No especificada")</strong>
+                                            </p>
+                                            <small class="text-muted">Se usará la forma de pago definida en la factura</small>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12 mb-3">
+                                            <label class="form-label">Referencia</label>
+                                            <InputText @bind-Value="nuevoPago.Referencia" class="form-control" placeholder="Nº transferencia, recibo, etc." />
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12 mb-3">
+                                            <label class="form-label">Notas / Observaciones</label>
+                                            <InputTextArea @bind-Value="nuevoPago.Notas" class="form-control" rows="2" />
+                                        </div>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-success">
+                                            <i class="bi bi-check-circle"></i> Registrar Pago
+                                        </button>
+                                    </div>
+                                </EditForm>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle-fill"></i> Esta factura está completamente pagada.
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CerrarModalPagos">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    private Factura factura = new();
+    private List<Cliente>? clientes;
+    private List<Producto>? productos;
+    private List<FormaPagoPersonalizada>? formasPago;
+    
+    // Gestión de pagos
+    private bool mostrarModalPagos = false;
+    private Factura? facturaParaPago;
+    private PagoFactura nuevoPago = new PagoFactura();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar formas de pago primero
+        formasPago = await FormaPagoService.ObtenerActivosAsync();
+        
+        // Inicializar formas de pago si no existen
+        if (formasPago == null || !formasPago.Any())
+        {
+            await FormaPagoService.InicializarFormasPredefinidasAsync();
+            formasPago = await FormaPagoService.ObtenerActivosAsync();
+        }
+        
+        clientes = await ClienteService.ObtenerTodosAsync();
+        productos = await ProductoService.ObtenerActivosAsync();
+
+        if (Id.HasValue)
+        {
+            var facturaExistente = await FacturaService.ObtenerPorIdAsync(Id.Value);
+            if (facturaExistente != null)
+            {
+                factura = facturaExistente;
+            }
+            else
+            {
+                Navigation.NavigateTo("/facturas");
+            }
+        }
+        
+        StateHasChanged();
+    }
+
+    private void AgregarLinea()
+    {
+        factura.Lineas.Add(new LineaDocumento
+        {
+            Cantidad = 1,
+            IVA = 21
+        });
+    }
+
+    private void EliminarLinea(int index)
+    {
+        factura.Lineas.RemoveAt(index);
+    }
+
+    private void CambiarProducto(int index, int? productoId)
+    {
+        var linea = factura.Lineas[index];
+        if (!productoId.HasValue || productoId == 0)
+            return;
+            
+        var producto = productos?.FirstOrDefault(p => p.Id == productoId.Value);
+        if (producto != null)
+        {
+            linea.ProductoId = producto.Id;
+            linea.Producto = producto;
+            linea.Descripcion = producto.Descripcion ?? producto.Nombre;
+            linea.PrecioUnitario = producto.PrecioUnitario;
+            linea.IVA = producto.IVA;
+        }
+        
+        CalcularTotal();
+    }
+
+    private void CalcularTotal()
+    {
+        // Calcular subtotal de líneas (ya se calcula automáticamente en la propiedad)
+        var subtotal = factura.Subtotal;
+        
+        // Calcular base imponible
+        factura.BaseImponible = subtotal - factura.DescuentosGenerales + factura.RecargosGenerales;
+        
+        // Calcular importe IVA (ya se calcula automáticamente en TotalIVA)
+        factura.ImporteIVA = factura.TotalIVA;
+        
+        // Calcular retención
+        factura.ImporteRetencion = factura.BaseImponible * (factura.PorcentajeRetencion / 100);
+        
+        // Calcular total
+        factura.Total = factura.BaseImponible + factura.ImporteIVA + factura.CargosAdicionales - factura.ImporteRetencion;
+        
+        StateHasChanged();
+    }
+
+    private async Task GuardarFactura()
+    {
+        CalcularTotal();
+        
+        if (Id.HasValue)
+        {
+            await FacturaService.ActualizarAsync(Id.Value, factura);
+        }
+        else
+        {
+            await FacturaService.CrearAsync(factura);
+        }
+        
+        Navigation.NavigateTo("/facturas-venta");
+    }
+
+    private void Cancelar()
+    {
+        Navigation.NavigateTo("/facturas-venta");
+    }
+
+    private async Task Imprimir()
+    {
+        if (!Id.HasValue || factura.Id == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe guardar la factura antes de imprimirla.");
+            return;
+        }
+
+        // Cargar factura completa con cliente y líneas
+        var facturaCompleta = await FacturaService.ObtenerPorIdAsync(factura.Id);
+        
+        if (facturaCompleta == null || facturaCompleta.Cliente == null)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error al cargar los datos de la factura. Asegúrese de que la factura tenga un cliente asignado.");
+            return;
+        }
+
+        var config = await ConfiguracionEmpresaService.ObtenerConfiguracionAsync();
+
+        // Generar el PDF para IMPRIMIR
+        byte[] pdfBytes = FacturaPdfService.GenerarFacturaPdf(facturaCompleta, facturaCompleta.Cliente, config, paraEmail: true);
+
+        // Convertir a Base64 y usar iframe oculto para imprimir directamente
+        string base64Pdf = Convert.ToBase64String(pdfBytes);
+        await JSRuntime.InvokeVoidAsync("eval", $@"
+            var byteCharacters = atob('{base64Pdf}');
+            var byteNumbers = new Array(byteCharacters.length);
+            for (var i = 0; i < byteCharacters.length; i++) {{
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }}
+            var byteArray = new Uint8Array(byteNumbers);
+            var blob = new Blob([byteArray], {{type: 'application/pdf'}});
+            var url = URL.createObjectURL(blob);
+            
+            // Crear iframe oculto para imprimir directamente
+            var iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = 'none';
+            iframe.src = url;
+            document.body.appendChild(iframe);
+            
+            iframe.onload = function() {{
+                setTimeout(function() {{
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                }}, 250);
+            }};
+        ");
+    }
+    
+    // Métodos para gestión de pagos
+    private async Task GestionarPagos(int facturaId)
+    {
+        var facturaCompleta = await FacturaService.ObtenerPorIdAsync(facturaId);
+        if (facturaCompleta != null)
+        {
+            facturaParaPago = facturaCompleta;
+            nuevoPago = new PagoFactura
+            {
+                FacturaId = facturaId,
+                FechaPago = DateTime.Now,
+                Importe = facturaCompleta.PendientePago,
+                // Heredar la forma de pago de la factura
+                FormaPagoPersonalizadaId = facturaCompleta.FormaPagoPersonalizadaId,
+                FormaPago = facturaCompleta.FormaPago
+            };
+            mostrarModalPagos = true;
+        }
+    }
+
+    private async Task RegistrarPago()
+    {
+        try
+        {
+            if (nuevoPago.Importe <= 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El importe debe ser mayor que 0");
+                return;
+            }
+
+            if (facturaParaPago != null && nuevoPago.Importe > facturaParaPago.PendientePago)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"El importe no puede ser mayor que el pendiente ({facturaParaPago.PendientePago:C2})");
+                return;
+            }
+
+            await FacturaService.RegistrarPagoAsync(nuevoPago);
+            
+            // Recargar la factura actual
+            var facturaActualizada = await FacturaService.ObtenerPorIdAsync(factura.Id);
+            if (facturaActualizada != null)
+            {
+                factura = facturaActualizada;
+                facturaParaPago = facturaActualizada;
+            }
+            
+            await JSRuntime.InvokeVoidAsync("alert", "Pago registrado correctamente");
+            
+            // Resetear formulario de nuevo pago
+            nuevoPago = new PagoFactura
+            {
+                FacturaId = factura.Id,
+                FechaPago = DateTime.Now,
+                Importe = factura.PendientePago,
+                FormaPagoPersonalizadaId = factura.FormaPagoPersonalizadaId,
+                FormaPago = factura.FormaPago
+            };
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al registrar el pago: {ex.Message}");
+        }
+    }
+
+    private async Task EliminarPago(int pagoId)
+    {
+        var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este pago?");
+        if (confirmar)
+        {
+            await FacturaService.EliminarPagoAsync(pagoId);
+            var facturaActualizada = await FacturaService.ObtenerPorIdAsync(factura.Id);
+            if (facturaActualizada != null)
+            {
+                factura = facturaActualizada;
+                facturaParaPago = facturaActualizada;
+            }
+        }
+    }
+
+    private void CerrarModalPagos()
+    {
+        mostrarModalPagos = false;
+        facturaParaPago = null;
+    }
+    
+    private string ObtenerClaseEstado(EstadoFactura estado)
+    {
+        return estado switch
+        {
+            EstadoFactura.Borrador => "bg-secondary",
+            EstadoFactura.Emitida => "bg-info",
+            EstadoFactura.Enviada => "bg-warning",
+            EstadoFactura.Pagada => "bg-success",
+            EstadoFactura.Vencida => "bg-danger",
+            EstadoFactura.Cancelada => "bg-dark",
+            _ => "bg-secondary"
+        };
+    }
+    
+    private async Task ExportarXML()
+    {
+        try
+        {
+            if (!Id.HasValue || factura.Id == 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Debe guardar la factura antes de exportarla.");
+                return;
+            }
+            
+            var xml = await FacturaEService.GenerarFacturaEXmlAsync(factura.Id);
+            
+            // Convertir el XML a bytes
+            var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xml);
+            var base64 = Convert.ToBase64String(xmlBytes);
+            
+            // Descargar el archivo usando JavaScript
+            var nombreArchivo = $"Factura_{factura.NumeroFactura.Replace("/", "-")}_{DateTime.Now:yyyyMMdd}.xml";
+            await JSRuntime.InvokeVoidAsync("downloadFile", nombreArchivo, base64, "text/xml");
+            
+            await JSRuntime.InvokeVoidAsync("alert", "Factura exportada a formato FacturaE correctamente.");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar a FacturaE: {ex.Message}");
+        }
+    }
+    
+    private async Task ExportarXMLFirmado()
+    {
+        try
+        {
+            if (!Id.HasValue || factura.Id == 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Debe guardar la factura antes de exportarla.");
+                return;
+            }
+            
+            // Obtener configuración de la empresa actual
+            var configuracion = await ConfiguracionEmpresaService.ObtenerConfiguracionAsync();
+            if (configuracion == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No se encontró la configuración de la empresa.");
+                return;
+            }
+            
+            // Verificar que la empresa tenga certificado configurado
+            if (string.IsNullOrWhiteSpace(configuracion.CertificadoRuta))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Esta empresa no tiene un certificado digital configurado.\n\nPor favor, configure el certificado en la página de Configuración antes de firmar facturas.");
+                return;
+            }
+            
+            if (string.IsNullOrWhiteSpace(configuracion.CertificadoPassword))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "El certificado de la empresa no tiene contraseña configurada.\n\nPor favor, complete la configuración del certificado.");
+                return;
+            }
+            
+            // Verificar que el archivo del certificado existe
+            if (!File.Exists(configuracion.CertificadoRuta))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"No se encuentra el archivo del certificado en:\n{configuracion.CertificadoRuta}\n\nPor favor, verifique la ruta en la configuración de la empresa.");
+                return;
+            }
+            
+            // Generar XML sin firma
+            var xmlSinFirmar = await FacturaEService.GenerarFacturaEXmlAsync(factura.Id);
+            
+            // Firmar XML con el certificado de la empresa
+            var xmlFirmado = FirmaDigitalService.FirmarXml(xmlSinFirmar, configuracion.CertificadoRuta, configuracion.CertificadoPassword);
+            
+            // Convertir a bytes y descargar
+            var xmlBytes = System.Text.Encoding.UTF8.GetBytes(xmlFirmado);
+            var base64 = Convert.ToBase64String(xmlBytes);
+            
+            var nombreArchivo = $"Factura_{factura.NumeroFactura.Replace("/", "-")}_FIRMADA_{DateTime.Now:yyyyMMdd}.xml";
+            await JSRuntime.InvokeVoidAsync("downloadFile", nombreArchivo, base64, "text/xml");
+            
+            await JSRuntime.InvokeVoidAsync("alert", "Factura exportada y firmada digitalmente correctamente.");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al exportar y firmar: {ex.Message}");
+        }
+    }
+    
+    private async Task EnviarPorEmail()
+    {
+        if (!Id.HasValue || factura.Id == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe guardar la factura antes de enviarla por email.");
+            return;
+        }
+
+        try
+        {
+            // Cargar factura completa con cliente
+            var facturaCompleta = await FacturaService.ObtenerPorIdAsync(factura.Id);
+            
+            if (facturaCompleta == null || facturaCompleta.Cliente == null)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error: La factura no tiene un cliente asignado.");
+                return;
+            }
+
+            // Verificar que el cliente tenga email
+            if (string.IsNullOrEmpty(facturaCompleta.Cliente.Email))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Error: El cliente no tiene un email configurado en su ficha.");
+                return;
+            }
+
+            var config = await ConfiguracionEmpresaService.ObtenerConfiguracionAsync();
+
+            // Generar PDF para email
+            byte[] pdfBytes = FacturaPdfService.GenerarFacturaPdf(facturaCompleta, facturaCompleta.Cliente, config, paraEmail: true);
+
+            // Preparar email
+            var nombreEmpresa = config?.NombreEmpresa ?? "FactioX";
+            var asunto = $"Factura {facturaCompleta.NumeroFactura} - {nombreEmpresa}";
+            
+            // Construir cuerpo del email
+            var cuerpoBuilder = new System.Text.StringBuilder();
+            cuerpoBuilder.AppendLine("<html>");
+            cuerpoBuilder.AppendLine("<body style='font-family: Arial, sans-serif;'>");
+            cuerpoBuilder.AppendLine($"<h2>Factura {facturaCompleta.NumeroFactura}</h2>");
+            cuerpoBuilder.AppendLine($"<p>Estimado/a {facturaCompleta.Cliente.Nombre},</p>");
+            cuerpoBuilder.AppendLine($"<p>Adjuntamos la factura <strong>{facturaCompleta.NumeroFactura}</strong> con fecha {facturaCompleta.FechaEmision:dd/MM/yyyy}.</p>");
+            cuerpoBuilder.AppendLine($"<p><strong>Importe total:</strong> {facturaCompleta.Total:C2}</p>");
+            cuerpoBuilder.AppendLine("<p>Para cualquier consulta, no dude en contactarnos.</p>");
+            cuerpoBuilder.AppendLine("<br/>");
+            cuerpoBuilder.AppendLine($"<p>Atentamente,<br/>{nombreEmpresa}</p>");
+            if (!string.IsNullOrEmpty(config?.Email))
+            {
+                cuerpoBuilder.AppendLine($"<p style='color: #666; font-size: 12px;'>Email: {config.Email}</p>");
+            }
+            if (!string.IsNullOrEmpty(config?.Telefono))
+            {
+                cuerpoBuilder.AppendLine($"<p style='color: #666; font-size: 12px;'>Teléfono: {config.Telefono}</p>");
+            }
+            cuerpoBuilder.AppendLine("</body>");
+            cuerpoBuilder.AppendLine("</html>");
+            var cuerpo = cuerpoBuilder.ToString();
+
+            var nombreArchivo = $"Factura_{facturaCompleta.NumeroFactura.Replace("/", "-")}_{DateTime.Now:yyyyMMdd}.pdf";
+
+            // Usar EmailSecundario en CC si existe
+            string? cc = !string.IsNullOrEmpty(facturaCompleta.Cliente.EmailSecundario) 
+                ? facturaCompleta.Cliente.EmailSecundario 
+                : null;
+
+            // Enviar email
+            await EmailService.EnviarEmailConAdjunto(
+                facturaCompleta.Cliente.Email,
+                asunto,
+                cuerpo,
+                pdfBytes,
+                nombreArchivo,
+                cc
+            );
+
+            await JSRuntime.InvokeVoidAsync("alert", $"Factura enviada correctamente a {facturaCompleta.Cliente.Email}");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al enviar email: {ex.Message}\n\nAsegúrate de tener configurado el servidor SMTP en appsettings.json");
+        }
+    }
+    
+    private void VerCliente()
+    {
+        if (factura.ClienteId > 0)
+        {
+            Navigation.NavigateTo($"/clientes/editar/{factura.ClienteId}", forceLoad: true);
+        }
+    }
+    
+    private void CrearCliente()
+    {
+        Navigation.NavigateTo("/clientes/nuevo", forceLoad: true);
+    }
+    
+    private async Task OnClienteChangedAsync(int clienteId)
+    {
+        Console.WriteLine($"========== OnClienteChangedAsync disparado - ClienteId: {clienteId} ==========");
+        
+        // Actualizar el valor
+        factura.ClienteId = clienteId;
+        
+        if (clienteId > 0)
+        {
+            Console.WriteLine($"ClienteId es válido: {clienteId}");
+            
+            var cliente = clientes?.FirstOrDefault(c => c.Id == clienteId);
+            Console.WriteLine($"Cliente encontrado: {cliente?.Nombre ?? "NULL"}");
+            Console.WriteLine($"Cliente.FormaPago: {cliente?.FormaPago?.ToString() ?? "NULL"}");
+            
+            if (cliente != null && cliente.FormaPago.HasValue)
+            {
+                Console.WriteLine($"✓ Cliente tiene FormaPago: {cliente.FormaPago.Value}");
+                
+                // Mapear el enum FormaPago del cliente al nombre de FormaPagoPersonalizada
+                var nombreFormaPago = ObtenerNombreFormaPago(cliente.FormaPago.Value);
+                Console.WriteLine($"✓ Nombre mapeado: '{nombreFormaPago}'");
+                
+                Console.WriteLine($"Formas de pago disponibles: {formasPago?.Count ?? 0}");
+                if (formasPago != null)
+                {
+                    foreach (var fp in formasPago)
+                    {
+                        Console.WriteLine($"  - '{fp.Nombre}' (ID: {fp.Id}, Activo: {fp.Activo})");
+                    }
+                }
+                
+                // Buscar la FormaPagoPersonalizada correspondiente
+                var formaPagoPersonalizada = formasPago?.FirstOrDefault(f => 
+                    f.Nombre.Equals(nombreFormaPago, StringComparison.OrdinalIgnoreCase));
+                
+                if (formaPagoPersonalizada != null)
+                {
+                    Console.WriteLine($"✓✓✓ FormaPago encontrada: '{formaPagoPersonalizada.Nombre}' (ID: {formaPagoPersonalizada.Id})");
+                    factura.FormaPagoPersonalizadaId = formaPagoPersonalizada.Id;
+                    Console.WriteLine($"✓✓✓ factura.FormaPagoPersonalizadaId asignado: {factura.FormaPagoPersonalizadaId}");
+                }
+                else
+                {
+                    Console.WriteLine($"✗✗✗ ERROR: No se encontró FormaPagoPersonalizada con nombre '{nombreFormaPago}'");
+                }
+            }
+            else
+            {
+                Console.WriteLine("✗ El cliente no tiene FormaPago configurado o cliente es null");
+            }
+        }
+        else
+        {
+            Console.WriteLine("ClienteId es 0 o negativo - no se procesa");
+        }
+        
+        Console.WriteLine($"========== Fin OnClienteChangedAsync ==========");
+        
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+    
+    private string ObtenerNombreFormaPago(FormaPago formaPago)
+    {
+        // Usar los atributos Display si existen, sino el nombre del enum
+        var tipo = typeof(FormaPago);
+        var memInfo = tipo.GetMember(formaPago.ToString());
+        
+        if (memInfo.Length > 0)
+        {
+            var attrs = memInfo[0].GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.DisplayAttribute), false);
+            if (attrs.Length > 0)
+            {
+                var displayAttr = (System.ComponentModel.DataAnnotations.DisplayAttribute)attrs[0];
+                return displayAttr.Name ?? formaPago.ToString();
+            }
+        }
+        
+        return formaPago.ToString();
+    }
+}

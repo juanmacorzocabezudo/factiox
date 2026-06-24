@@ -1,0 +1,88 @@
+# Build results
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Mono auto generated files
+mono_crash.*
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/packages/*
+*.nuget.props
+*.nuget.targets
+
+# ASP.NET Scaffolding
+ScaffoldingReadMe.txt
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Certificados electrónicos (contienen información sensible)
+wwwroot/certificados/
+*.pfx
+*.p12
+
+# Logs
+logs/
+*.log
+
+# Migration files temp
+Migrations/
+
+# appsettings personalizados
+appsettings.Development.json
+
+# Backups de base de datos
+*.sql
+
+# Archivos de publicación IIS
+factiox_iis_*.zip
+publish_iis/
+publicado/
+publish/
+
+# Archivos grandes de Tesseract (traineddata)
+tessdata/*.traineddata
+
+# Archivos temporales
+modal_temp.txt

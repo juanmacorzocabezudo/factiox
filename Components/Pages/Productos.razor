@@ -1,0 +1,945 @@
+@page "/productos"
+@using FactioX.Models
+@using FactioX.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using System.IO
+@inject IProductoService ProductoService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="mb-3">
+        <button class="btn btn-primary" @onclick="NuevoProducto">
+            <i class="bi bi-plus-circle"></i> Nuevo Producto/Servicio
+        </button>
+    </div>
+
+    @if (productos != null)
+    {
+        <!-- Estadísticas -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h6>Total Productos</h6>
+                        <h3>@productos.Count(p => p.Tipo == TipoProducto.Producto)</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h6>Total Servicios</h6>
+                        <h3>@productos.Count(p => p.Tipo == TipoProducto.Servicio)</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <h6>Activos</h6>
+                        <h3>@productos.Count(p => p.Activo)</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-dark">
+                    <div class="card-body">
+                        <h6>Stock Bajo</h6>
+                        <h3>@productos.Count(p => p.Stock.HasValue && p.StockMinimo.HasValue && p.Stock < p.StockMinimo)</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" placeholder="Buscar por nombre, referencia o código..." @bind="Busqueda" @bind:event="oninput" />
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" @bind="FiltroTipo">
+                            <option value="">Todos los tipos</option>
+                            <option value="Producto">Productos</option>
+                            <option value="Servicio">Servicios</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" @bind="FiltroEstado">
+                            <option value="">Todos los estados</option>
+                            <option value="true">Activos</option>
+                            <option value="false">Inactivos</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!TodosLosFiltrados.Any())
+        {
+            <div class="alert alert-info">
+                No hay productos que coincidan con los filtros.
+            </div>
+        }
+        else
+        {
+            <!-- Lista de productos -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Referencia</th>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th>Categoría</th>
+                                    <th class="text-end">Precio</th>
+                                    <th class="text-end">IVA</th>
+                                    <th class="text-center">Stock</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var producto in ProductosFiltrados)
+                                {
+                                    var productoId = producto.Id;
+                                    <tr class="@(producto.Stock.HasValue && producto.StockMinimo.HasValue && producto.Stock < producto.StockMinimo ? "table-warning" : "")" @ondblclick="() => EditarProducto(productoId)" style="cursor: pointer;">
+                                        <td>
+                                            <strong>@producto.Referencia</strong>
+                                            @if (!string.IsNullOrEmpty(producto.CodigoBarras))
+                                            {
+                                                <br />
+                                                <small class="text-muted"><i class="bi bi-upc-scan"></i> @producto.CodigoBarras</small>
+                                            }
+                                        </td>
+                                        <td>
+                                            <strong>@producto.Nombre</strong>
+                                            @if (!string.IsNullOrEmpty(producto.Marca))
+                                            {
+                                                <br />
+                                                <small class="text-muted">@producto.Marca</small>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="badge @(producto.Tipo == TipoProducto.Producto ? "bg-primary" : "bg-success")">
+                                                @producto.Tipo
+                                            </span>
+                                        </td>
+                                        <td>@producto.Categoria</td>
+                                        <td class="text-end">
+                                            <strong>@producto.PrecioUnitario.ToString("C2")</strong>
+                                            @if (producto.PrecioCompra > 0)
+                                            {
+                                                var margen = ((producto.PrecioUnitario - producto.PrecioCompra) / producto.PrecioCompra * 100);
+                                                <br />
+                                                <small class="text-muted">Margen: @margen.ToString("F1")%</small>
+                                            }
+                                        </td>
+                                        <td class="text-end">@producto.IVA%</td>
+                                        <td class="text-center">
+                                            @if (producto.Tipo == TipoProducto.Producto && producto.Stock.HasValue)
+                                            {
+                                                <span class="badge @(producto.Stock < producto.StockMinimo ? "bg-danger" : "bg-success")">
+                                                    @producto.Stock
+                                                </span>
+                                                @if (producto.StockMinimo.HasValue)
+                                                {
+                                                    <br />
+                                                    <small class="text-muted">Mín: @producto.StockMinimo</small>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="badge @(producto.Activo ? "bg-success" : "bg-secondary")">
+                                                @(producto.Activo ? "Activo" : "Inactivo")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => EditarProducto(productoId)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarProducto(productoId)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Paginación -->
+                    @if (TotalPaginas > 1)
+                    {
+                        <div class="d-flex justify-content-between align-items-center mt-3 px-3 pb-3">
+                            <div class="text-muted">
+                                Mostrando @((paginaActual - 1) * elementosPorPagina + 1) - @Math.Min(paginaActual * elementosPorPagina, TodosLosFiltrados.Count()) de @TodosLosFiltrados.Count() productos
+                            </div>
+                            <nav>
+                                <ul class="pagination mb-0">
+                                    <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                                        <button class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" disabled="@(paginaActual == 1)">
+                                            <i class="bi bi-chevron-left"></i> Anterior
+                                        </button>
+                                    </li>
+                                    
+                                    @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+                                    {
+                                        var pagina = i;
+                                        <li class="page-item @(paginaActual == pagina ? "active" : "")">
+                                            <button class="page-link" @onclick="() => CambiarPagina(pagina)">@pagina</button>
+                                        </li>
+                                    }
+                                    
+                                    <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                                        <button class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" disabled="@(paginaActual == TotalPaginas)">
+                                            Siguiente <i class="bi bi-chevron-right"></i>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Gráfico de Análisis -->
+            <div class="card mt-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="bi bi-graph-up"></i> Análisis de Productos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- Distribución por Tipo -->
+                        <div class="col-md-4">
+                            <h6 class="text-center mb-3">Distribución por Tipo</h6>
+                            <canvas id="chartTipo" style="max-height: 250px;"></canvas>
+                            <div class="mt-3">
+                                <div class="d-flex justify-content-between">
+                                    <span><i class="bi bi-circle-fill text-primary"></i> Productos:</span>
+                                    <strong>@productos.Count(p => p.Tipo == TipoProducto.Producto)</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span><i class="bi bi-circle-fill text-success"></i> Servicios:</span>
+                                    <strong>@productos.Count(p => p.Tipo == TipoProducto.Servicio)</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Distribución por Categoría -->
+                        <div class="col-md-4">
+                            <h6 class="text-center mb-3">Top 5 Categorías</h6>
+                            <canvas id="chartCategoria" style="max-height: 250px;"></canvas>
+                            <div class="mt-3">
+                                @foreach (var cat in productos.Where(p => !string.IsNullOrEmpty(p.Categoria)).GroupBy(p => p.Categoria).OrderByDescending(g => g.Count()).Take(5))
+                                {
+                                    <div class="d-flex justify-content-between">
+                                        <span>@cat.Key:</span>
+                                        <strong>@cat.Count()</strong>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Valor del Inventario -->
+                        <div class="col-md-4">
+                            <h6 class="text-center mb-3">Valor del Inventario</h6>
+                            <div class="text-center mb-3">
+                                <h2 class="text-primary">@productos.Where(p => p.Stock.HasValue).Sum(p => p.Stock.Value * p.PrecioUnitario).ToString("C2")</h2>
+                                <small class="text-muted">Valor total del stock</small>
+                            </div>
+                            <div class="mt-3">
+                                <div class="d-flex justify-content-between">
+                                    <span>Productos con stock:</span>
+                                    <strong>@productos.Count(p => p.Stock.HasValue && p.Stock > 0)</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Stock bajo:</span>
+                                    <strong class="text-warning">@productos.Count(p => p.Stock.HasValue && p.StockMinimo.HasValue && p.Stock < p.StockMinimo)</strong>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span>Sin stock:</span>
+                                    <strong class="text-danger">@productos.Count(p => p.Stock.HasValue && p.Stock == 0)</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <p><em>Cargando...</em></p>
+    }
+</div>
+
+<!-- Modal de Producto -->
+@if (mostrarModal)
+{
+    <div class="modal fade" id="productoModal" tabindex="-1" aria-labelledby="productoModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <EditForm Model="@productoActual" OnValidSubmit="GuardarProducto">
+                    <DataAnnotationsValidator />
+                    
+                    <!-- Header con botones -->
+                    <div class="modal-header bg-white">
+                        <h5 class="modal-title" id="productoModalLabel">@tituloModal</h5>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save"></i> Guardar
+                            </button>
+                            <button type="button" class="btn btn-secondary" @onclick="CerrarModal">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                        <!-- Datos Básicos -->
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">Datos Básicos</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <!-- Columna Imagen (izquierda) -->
+                                    <div class="col-md-4 mb-3">
+                                        @if (!string.IsNullOrEmpty(productoActual.Imagen))
+                                        {
+                                            <div class="text-center mb-3">
+                                                <img src="@productoActual.Imagen" alt="Imagen del producto" class="img-fluid rounded" style="max-height: 250px; max-width: 100%; object-fit: contain;" />
+                                                <div class="mt-2">
+                                                    <button type="button" class="btn btn-sm btn-danger" @onclick="EliminarImagen">
+                                                        <i class="bi bi-trash"></i> Eliminar Imagen
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="text-center p-4 bg-light rounded">
+                                                <i class="bi bi-image" style="font-size: 3rem; color: #ccc;"></i>
+                                                <p class="text-muted mt-2 mb-0">Sin imagen</p>
+                                            </div>
+                                        }
+                                    </div>
+                                    
+                                    <!-- Columna Datos (derecha) -->
+                                    <div class="col-md-8">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Nombre *</label>
+                                                <InputText class="form-control" @bind-Value="productoActual.Nombre" />
+                                                <ValidationMessage For="@(() => productoActual.Nombre)" />
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Tipo *</label>
+                                                <InputSelect class="form-select" @bind-Value="productoActual.Tipo">
+                                                    <option value="@TipoProducto.Producto">Producto</option>
+                                                    <option value="@TipoProducto.Servicio">Servicio</option>
+                                                </InputSelect>
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Estado</label>
+                                                <div class="form-check form-switch mt-2">
+                                                    <InputCheckbox class="form-check-input" @bind-Value="productoActual.Activo" id="switchActivo" />
+                                                    <label class="form-check-label" for="switchActivo">
+                                                        @(productoActual.Activo ? "Activo" : "Inactivo")
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Referencia</label>
+                                                <InputText class="form-control" @bind-Value="productoActual.Referencia" />
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Código de Barras</label>
+                                                <InputText class="form-control" @bind-Value="productoActual.CodigoBarras" />
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Categoría</label>
+                                                <InputText class="form-control" @bind-Value="productoActual.Categoria" />
+                                            </div>
+                                            <div class="col-md-3 mb-3">
+                                                <label class="form-label">Marca</label>
+                                                <InputText class="form-control" @bind-Value="productoActual.Marca" />
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-12 mb-3">
+                                                <label class="form-label">Descripción</label>
+                                                <InputTextArea class="form-control" rows="3" @bind-Value="productoActual.Descripcion" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Precios y Medidas -->
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">Precios y Medidas</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Unidad de Medida *</label>
+                                        <InputSelect class="form-select" @bind-Value="productoActual.UnidadMedida">
+                                            <option value="@UnidadMedida.Unidad">Unidad</option>
+                                            <option value="@UnidadMedida.Kg">Kilogramo (Kg)</option>
+                                            <option value="@UnidadMedida.Litro">Litro (L)</option>
+                                            <option value="@UnidadMedida.Metro">Metro (m)</option>
+                                            <option value="@UnidadMedida.M2">Metro cuadrado (m²)</option>
+                                            <option value="@UnidadMedida.M3">Metro cúbico (m³)</option>
+                                            <option value="@UnidadMedida.Hora">Hora</option>
+                                            <option value="@UnidadMedida.Dia">Día</option>
+                                            <option value="@UnidadMedida.Caja">Caja</option>
+                                            <option value="@UnidadMedida.Paquete">Paquete</option>
+                                        </InputSelect>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Precio de Compra</label>
+                                        <InputNumber class="form-control" @bind-Value="productoActual.PrecioCompra" step="0.01" />
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Precio de Venta *</label>
+                                        <InputNumber class="form-control" @bind-Value="productoActual.PrecioUnitario" step="0.01" />
+                                        <ValidationMessage For="@(() => productoActual.PrecioUnitario)" />
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">
+                                            Margen
+                                            @if (productoActual.PrecioCompra > 0 && productoActual.PrecioUnitario > 0)
+                                            {
+                                                var margen = ((productoActual.PrecioUnitario - productoActual.PrecioCompra) / productoActual.PrecioCompra * 100);
+                                                <span class="badge @(margen > 0 ? "bg-success" : "bg-danger")">@margen.ToString("F1")%</span>
+                                            }
+                                        </label>
+                                        <input type="text" class="form-control" readonly value="@((productoActual.PrecioUnitario - productoActual.PrecioCompra).ToString("C2"))" />
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">IVA (%) *</label>
+                                        <InputNumber class="form-control" @bind-Value="productoActual.IVA" step="0.01" />
+                                        <ValidationMessage For="@(() => productoActual.IVA)" />
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Descuento (%)</label>
+                                        <InputNumber class="form-control" @bind-Value="productoActual.Descuento" step="0.01" />
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label class="form-label">Precio Final (IVA inc.)</label>
+                                        <input type="text" class="form-control" readonly 
+                                               value="@((productoActual.PrecioUnitario * (1 + productoActual.IVA / 100)).ToString("C2"))" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stock (solo para productos) -->
+                        @if (productoActual.Tipo == TipoProducto.Producto)
+                        {
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <h6 class="mb-0">Gestión de Stock</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-3 mb-3">
+                                            <label class="form-label">Stock Actual</label>
+                                            <InputNumber class="form-control" @bind-Value="productoActual.Stock" />
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label class="form-label">Stock Mínimo</label>
+                                            <InputNumber class="form-control" @bind-Value="productoActual.StockMinimo" />
+                                            <small class="text-muted">Alerta si el stock es inferior</small>
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label class="form-label">Stock Máximo</label>
+                                            <InputNumber class="form-control" @bind-Value="productoActual.StockMaximo" />
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label class="form-label">Valor del Stock</label>
+                                            <input type="text" class="form-control" readonly 
+                                                   value="@((productoActual.Stock * productoActual.PrecioUnitario ?? 0).ToString("C2"))" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Dimensiones físicas -->
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <h6 class="mb-0">Dimensiones y Peso</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-3 mb-3">
+                                            <label class="form-label">Peso (kg)</label>
+                                            <InputNumber class="form-control" @bind-Value="productoActual.Peso" step="0.001" />
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label class="form-label">Alto (cm)</label>
+                                            <InputNumber class="form-control" @bind-Value="productoActual.Alto" step="0.01" />
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label class="form-label">Ancho (cm)</label>
+                                            <InputNumber class="form-control" @bind-Value="productoActual.Ancho" step="0.01" />
+                                        </div>
+                                        <div class="col-md-3 mb-3">
+                                            <label class="form-label">Largo (cm)</label>
+                                            <InputNumber class="form-control" @bind-Value="productoActual.Largo" step="0.01" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <!-- Información Adicional -->
+                        <div class="card mb-3">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">Información Adicional</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label">Imagen del Producto</label>
+                                        <InputFile class="form-control" OnChange="CargarImagen" accept="image/*" />
+                                        <small class="text-muted">La imagen se redimensionará automáticamente a 400x400px</small>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label">Observaciones</label>
+                                        <InputTextArea class="form-control" rows="4" @bind-Value="productoActual.Observaciones" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+<script>
+    window.renderProductCharts = function() {
+        // Destruir gráficos anteriores si existen
+        if (window.chartTipoInstance) window.chartTipoInstance.destroy();
+        if (window.chartCategoriaInstance) window.chartCategoriaInstance.destroy();
+        
+        // Obtener datos del DOM
+        const totalProductos = parseInt(document.querySelector('[data-productos]')?.dataset.productos || '0');
+        const totalServicios = parseInt(document.querySelector('[data-servicios]')?.dataset.servicios || '0');
+        
+        // Gráfico de Tipo (Dona)
+        const ctxTipo = document.getElementById('chartTipo');
+        if (ctxTipo) {
+            window.chartTipoInstance = new Chart(ctxTipo, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Productos', 'Servicios'],
+                    datasets: [{
+                        data: [totalProductos, totalServicios],
+                        backgroundColor: ['#0d6efd', '#198754'],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Gráfico de Categorías (Barra horizontal)
+        const ctxCategoria = document.getElementById('chartCategoria');
+        if (ctxCategoria) {
+            window.chartCategoriaInstance = new Chart(ctxCategoria, {
+                type: 'bar',
+                data: {
+                    labels: window.categoriasLabels || [],
+                    datasets: [{
+                        label: 'Cantidad',
+                        data: window.categoriasData || [],
+                        backgroundColor: '#0d6efd',
+                        borderRadius: 5
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    };
+    
+    // Función para redimensionar y comprimir imágenes
+    window.redimensionarImagen = function(dataUrl, maxWidth, maxHeight) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = function() {
+                let width = img.width;
+                let height = img.height;
+                
+                // Calcular nuevas dimensiones manteniendo el aspect ratio
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = height * (maxWidth / width);
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = width * (maxHeight / height);
+                        height = maxHeight;
+                    }
+                }
+                
+                // Crear canvas y redimensionar
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convertir a base64 con compresión
+                const base64 = canvas.toDataURL('image/jpeg', 0.85); // Calidad 85%
+                resolve(base64);
+            };
+            img.onerror = function() {
+                reject(new Error('Error al cargar la imagen'));
+            };
+            img.src = dataUrl;
+        });
+    };
+</script>
+
+@code {
+    private List<Producto>? productos;
+    private string _busqueda = string.Empty;
+    private string _filtroTipo = string.Empty;
+    private string _filtroEstado = string.Empty;
+    private int paginaActual = 1;
+    private int elementosPorPagina = 10;
+
+    private string Busqueda
+    {
+        get => _busqueda;
+        set
+        {
+            if (_busqueda != value)
+            {
+                _busqueda = value;
+                paginaActual = 1;
+            }
+        }
+    }
+
+    private string FiltroTipo
+    {
+        get => _filtroTipo;
+        set
+        {
+            if (_filtroTipo != value)
+            {
+                _filtroTipo = value;
+                paginaActual = 1;
+            }
+        }
+    }
+
+    private string FiltroEstado
+    {
+        get => _filtroEstado;
+        set
+        {
+            if (_filtroEstado != value)
+            {
+                _filtroEstado = value;
+                paginaActual = 1;
+            }
+        }
+    }
+
+    private IEnumerable<Producto> TodosLosFiltrados
+    {
+        get
+        {
+            if (productos == null) return Enumerable.Empty<Producto>();
+
+            var resultado = productos.AsEnumerable();
+
+            // Filtro de búsqueda
+            if (!string.IsNullOrWhiteSpace(_busqueda))
+            {
+                resultado = resultado.Where(p =>
+                    (p.Nombre?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (p.Referencia?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (p.CodigoBarras?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (p.Descripcion?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false)
+                );
+            }
+
+            // Filtro por tipo
+            if (!string.IsNullOrEmpty(_filtroTipo))
+            {
+                if (Enum.TryParse<TipoProducto>(_filtroTipo, out var tipo))
+                {
+                    resultado = resultado.Where(p => p.Tipo == tipo);
+                }
+            }
+
+            // Filtro por estado
+            if (!string.IsNullOrEmpty(_filtroEstado))
+            {
+                if (bool.TryParse(_filtroEstado, out var activo))
+                {
+                    resultado = resultado.Where(p => p.Activo == activo);
+                }
+            }
+
+            return resultado;
+        }
+    }
+
+    private IEnumerable<Producto> ProductosFiltrados
+    {
+        get
+        {
+            return TodosLosFiltrados
+                .Skip((paginaActual - 1) * elementosPorPagina)
+                .Take(elementosPorPagina);
+        }
+    }
+
+    private int TotalPaginas => (int)Math.Ceiling((double)TodosLosFiltrados.Count() / elementosPorPagina);
+
+    private void CambiarPagina(int pagina)
+    {
+        if (pagina >= 1 && pagina <= TotalPaginas)
+        {
+            paginaActual = pagina;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarProductos();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (productos != null && productos.Any())
+        {
+            await RenderizarGraficos();
+        }
+    }
+
+    private async Task CargarProductos()
+    {
+        productos = await ProductoService.ObtenerTodosAsync();
+        StateHasChanged();
+    }
+
+    private async Task RenderizarGraficos()
+    {
+        try
+        {
+            var categorias = productos!
+                .Where(p => !string.IsNullOrEmpty(p.Categoria))
+                .GroupBy(p => p.Categoria)
+                .OrderByDescending(g => g.Count())
+                .Take(5)
+                .ToList();
+
+            await JSRuntime.InvokeVoidAsync("eval", $"window.categoriasLabels = {System.Text.Json.JsonSerializer.Serialize(categorias.Select(c => c.Key).ToArray())};");
+            await JSRuntime.InvokeVoidAsync("eval", $"window.categoriasData = {System.Text.Json.JsonSerializer.Serialize(categorias.Select(c => c.Count()).ToArray())};");
+            
+            // Añadir atributos de datos para el script
+            await JSRuntime.InvokeVoidAsync("eval", $@"
+                if (!document.querySelector('[data-productos]')) {{
+                    var elem = document.createElement('div');
+                    elem.setAttribute('data-productos', '{productos.Count(p => p.Tipo == TipoProducto.Producto)}');
+                    elem.setAttribute('data-servicios', '{productos.Count(p => p.Tipo == TipoProducto.Servicio)}');
+                    elem.style.display = 'none';
+                    document.body.appendChild(elem);
+                }}
+            ");
+            
+            await JSRuntime.InvokeVoidAsync("renderProductCharts");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al renderizar gráficos: {ex.Message}");
+        }
+    }
+
+    // Modal
+    private bool mostrarModal = false;
+    private bool esEdicion = false;
+    private Producto productoActual = new();
+    private string tituloModal => esEdicion ? "Editar Producto/Servicio" : "Nuevo Producto/Servicio";
+
+    private async Task NuevoProducto()
+    {
+        productoActual = new Producto
+        {
+            Activo = true,
+            IVA = 21,
+            UnidadMedida = UnidadMedida.Unidad,
+            Tipo = TipoProducto.Producto
+        };
+        esEdicion = false;
+        mostrarModal = true;
+        StateHasChanged();
+        await Task.Delay(100);
+        await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('productoModal')).show()");
+    }
+
+    private async Task EditarProducto(int id)
+    {
+        var producto = await ProductoService.ObtenerPorIdAsync(id);
+        if (producto != null)
+        {
+            productoActual = producto;
+            esEdicion = true;
+            mostrarModal = true;
+            StateHasChanged();
+            await Task.Delay(100);
+            await JSRuntime.InvokeVoidAsync("eval", "new bootstrap.Modal(document.getElementById('productoModal')).show()");
+        }
+    }
+
+    private async Task GuardarProducto()
+    {
+        try
+        {
+            if (esEdicion)
+            {
+                await ProductoService.ActualizarAsync(productoActual.Id, productoActual);
+            }
+            else
+            {
+                await ProductoService.CrearAsync(productoActual);
+            }
+
+            await CerrarModal();
+            await CargarProductos();
+            await RenderizarGraficos();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al guardar producto: {ex.Message}");
+        }
+    }
+
+    private async Task CerrarModal()
+    {
+        await JSRuntime.InvokeVoidAsync("eval", "bootstrap.Modal.getInstance(document.getElementById('productoModal'))?.hide()");
+        mostrarModal = false;
+        productoActual = new();
+        StateHasChanged();
+    }
+
+    private async Task EliminarProducto(int id)
+    {
+        var confirmado = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este producto?");
+        if (confirmado)
+        {
+            await ProductoService.EliminarAsync(id);
+            await CargarProductos();
+            await RenderizarGraficos();
+        }
+    }
+
+    private async Task CargarImagen(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var archivo = e.File;
+            
+            // Validar que sea una imagen y no supere 5MB
+            if (!archivo.ContentType.StartsWith("image/"))
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Por favor, seleccione un archivo de imagen válido.");
+                return;
+            }
+
+            if (archivo.Size > 5 * 1024 * 1024) // 5MB
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "La imagen no debe superar 5MB.");
+                return;
+            }
+
+            // Leer el archivo
+            using var stream = archivo.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            var bytes = memoryStream.ToArray();
+
+            // Redimensionar y comprimir la imagen usando JavaScript
+            var base64Original = Convert.ToBase64String(bytes);
+            var mimeType = archivo.ContentType;
+            
+            // Llamar a JavaScript para redimensionar la imagen
+            var base64Redimensionada = await JSRuntime.InvokeAsync<string>(
+                "redimensionarImagen", 
+                $"data:{mimeType};base64,{base64Original}", 
+                400, // ancho máximo
+                400  // alto máximo
+            );
+
+            productoActual.Imagen = base64Redimensionada;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al cargar la imagen: {ex.Message}");
+        }
+    }
+
+    private void EliminarImagen()
+    {
+        productoActual.Imagen = null;
+        StateHasChanged();
+    }
+}

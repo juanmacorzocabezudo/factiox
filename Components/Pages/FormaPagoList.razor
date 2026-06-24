@@ -1,0 +1,244 @@
+@page "/configuracion/formas-pago"
+@using FactioX.Models
+@using FactioX.Services
+@inject IFormaPagoPersonalizadaService FormaPagoService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Formas de Pago - FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-wallet2"></i> Formas de Pago</h1>
+        <button type="button" class="btn btn-primary" @onclick="MostrarModalNuevo">
+            <i class="bi bi-plus-circle"></i> Nueva Forma de Pago
+        </button>
+    </div>
+
+    @if (formasPago == null)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+        </div>
+    }
+    else if (!formasPago.Any())
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No hay formas de pago configuradas. 
+            <button class="btn btn-sm btn-primary ms-2" @onclick="InicializarPredefinidos">
+                Crear Formas Predefinidas
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Descripción</th>
+                                <th>Estado</th>
+                                <th>Tipo</th>
+                                <th style="width: 150px">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var forma in formasPago)
+                            {
+                                <tr @ondblclick="() => MostrarModalEditar(forma)" style="cursor: pointer;">
+                                    <td>
+                                        <strong>@forma.Nombre</strong>
+                                    </td>
+                                    <td>@forma.Descripcion</td>
+                                    <td>
+                                        @if (forma.Activo)
+                                        {
+                                            <span class="badge bg-success">Activo</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Inactivo</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (forma.EsPredefinido)
+                                        {
+                                            <span class="badge bg-info">Predefinido</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-primary">Personalizado</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" 
+                                                    @onclick="() => MostrarModalEditar(forma)" title="Editar">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            @if (!forma.EsPredefinido)
+                                            {
+                                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                        @onclick="() => Eliminar(forma.Id)" title="Eliminar">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Modal para Crear/Editar Forma de Pago -->
+@if (mostrarModal && formaPagoEditando != null)
+{
+    <div class="modal fade show" style="display: block;" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-wallet2"></i> @(formaPagoEditando.Id > 0 ? "Editar" : "Nueva") Forma de Pago
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <EditForm Model="@formaPagoEditando" OnValidSubmit="Guardar">
+                    <DataAnnotationsValidator />
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Nombre *</label>
+                            <InputText @bind-Value="formaPagoEditando!.Nombre" class="form-control" 
+                                       placeholder="Ej: PayPal, Stripe, Contrareembolso..." />
+                            <ValidationMessage For="@(() => formaPagoEditando.Nombre)" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descripción</label>
+                            <InputTextArea @bind-Value="formaPagoEditando!.Descripcion" class="form-control" 
+                                          rows="3" placeholder="Descripción opcional de la forma de pago" />
+                            <ValidationMessage For="@(() => formaPagoEditando.Descripcion)" />
+                        </div>
+                        <div class="form-check mb-3">
+                            <InputCheckbox @bind-Value="formaPagoEditando!.Activo" class="form-check-input" id="activoCheck" />
+                            <label class="form-check-label" for="activoCheck">
+                                Activo
+                            </label>
+                            <small class="form-text text-muted d-block">
+                                Solo las formas activas aparecerán disponibles en las facturas
+                            </small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Guardar
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private List<FormaPagoPersonalizada>? formasPago;
+    private bool mostrarModal = false;
+    private FormaPagoPersonalizada formaPagoEditando = new FormaPagoPersonalizada { Activo = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarFormasPago();
+    }
+
+    private async Task CargarFormasPago()
+    {
+        formasPago = await FormaPagoService.ObtenerTodosAsync();
+    }
+
+    private void MostrarModalNuevo()
+    {
+        formaPagoEditando = new FormaPagoPersonalizada { Activo = true };
+        mostrarModal = true;
+    }
+
+    private void MostrarModalEditar(FormaPagoPersonalizada forma)
+    {
+        formaPagoEditando = new FormaPagoPersonalizada
+        {
+            Id = forma.Id,
+            Nombre = forma.Nombre,
+            Descripcion = forma.Descripcion,
+            Activo = forma.Activo,
+            EsPredefinido = forma.EsPredefinido
+        };
+        mostrarModal = true;
+    }
+
+    private void CerrarModal()
+    {
+        mostrarModal = false;
+        formaPagoEditando = new FormaPagoPersonalizada { Activo = true };
+    }
+
+    private async Task Guardar()
+    {
+        try
+        {
+            if (formaPagoEditando.Id > 0)
+            {
+                await FormaPagoService.ActualizarAsync(formaPagoEditando.Id, formaPagoEditando);
+                await JSRuntime.InvokeVoidAsync("alert", "Forma de pago actualizada correctamente");
+            }
+            else
+            {
+                await FormaPagoService.CrearAsync(formaPagoEditando);
+                await JSRuntime.InvokeVoidAsync("alert", "Forma de pago creada correctamente");
+            }
+
+            await CargarFormasPago();
+            CerrarModal();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task Eliminar(int id)
+    {
+        var confirmar = await JSRuntime.InvokeAsync<bool>("confirm", 
+            "¿Está seguro de que desea eliminar esta forma de pago?");
+        
+        if (confirmar)
+        {
+            var resultado = await FormaPagoService.EliminarAsync(id);
+            if (resultado)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Forma de pago eliminada correctamente");
+                await CargarFormasPago();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", 
+                    "No se puede eliminar esta forma de pago. Puede estar en uso o ser predefinida.");
+            }
+        }
+    }
+
+    private async Task InicializarPredefinidos()
+    {
+        await FormaPagoService.InicializarFormasPredefinidasAsync();
+        await CargarFormasPago();
+        await JSRuntime.InvokeVoidAsync("alert", "Formas de pago predefinidas creadas correctamente");
+    }
+}

@@ -1,0 +1,101 @@
+{
+  "name": "FactioX - Gestión Empresarial",
+  "short_name": "FactioX",
+  "description": "Sistema de gestión empresarial completo con facturación, clientes, proveedores y más",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a3a1a",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "LogoFactioxFIN.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
+  "screenshots": [
+    {
+      "src": "screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "screenshot-mobile.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nueva Factura",
+      "short_name": "Factura",
+      "description": "Crear una nueva factura de venta",
+      "url": "/facturas-venta",
+      "icons": [
+        {
+          "src": "LogoFactioxFIN.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Clientes",
+      "short_name": "Clientes",
+      "description": "Ver listado de clientes",
+      "url": "/clientes",
+      "icons": [
+        {
+          "src": "LogoFactioxFIN.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Presupuestos",
+      "short_name": "Presupuestos",
+      "description": "Gestionar presupuestos",
+      "url": "/presupuestos",
+      "icons": [
+        {
+          "src": "LogoFactioxFIN.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "prefer_related_applications": false
+}

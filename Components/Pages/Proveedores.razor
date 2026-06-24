@@ -1,0 +1,586 @@
+@page "/proveedores"
+@using FactioX.Models
+@using FactioX.Services
+@inject IProveedorService ProveedorService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="mb-3">
+        <button class="btn btn-primary" @onclick="AbrirModalNuevoProveedor">
+            <i class="bi bi-plus-circle"></i> Nuevo Proveedor
+        </button>
+    </div>
+
+    @if (proveedores != null)
+    {
+        <!-- Estadísticas -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <h6>Total Proveedores</h6>
+                        <h3>@proveedores.Count</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h6>Activos</h6>
+                        <h3>@proveedores.Count(p => p.Activo)</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-secondary text-white">
+                    <div class="card-body">
+                        <h6>Inactivos</h6>
+                        <h3>@proveedores.Count(p => !p.Activo)</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <input type="text" class="form-control" placeholder="Buscar por nombre, NIF o email..." @bind="Busqueda" @bind:event="oninput" />
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" @bind="FiltroEstado">
+                            <option value="">Todos los estados</option>
+                            <option value="true">Activos</option>
+                            <option value="false">Inactivos</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!TodosLosFiltrados.Any())
+        {
+            <div class="alert alert-info">
+                No hay proveedores que coincidan con los filtros.
+            </div>
+        }
+        else
+        {
+            <!-- Lista de proveedores -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Nombre/Empresa</th>
+                                    <th>NIF</th>
+                                    <th>Contacto</th>
+                                    <th>Ciudad</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var proveedor in ProveedoresFiltrados)
+                                {
+                                    var proveedorId = proveedor.Id;
+                                    <tr @ondblclick="() => AbrirModalEditarProveedor(proveedorId)" style="cursor: pointer;">
+                                        <td>
+                                            <strong>@proveedor.Nombre</strong>
+                                            @if (!string.IsNullOrEmpty(proveedor.PersonaContacto))
+                                            {
+                                                <br />
+                                                <small class="text-muted">@proveedor.PersonaContacto</small>
+                                            }
+                                        </td>
+                                        <td>@proveedor.NIF</td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(proveedor.Email))
+                                            {
+                                                <div><i class="bi bi-envelope"></i> @proveedor.Email</div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(proveedor.Telefono))
+                                            {
+                                                <div><i class="bi bi-telephone"></i> @proveedor.Telefono</div>
+                                            }
+                                        </td>
+                                        <td>@proveedor.Ciudad</td>
+                                        <td>
+                                            <span class="badge @(proveedor.Activo ? "bg-success" : "bg-secondary")">
+                                                @(proveedor.Activo ? "Activo" : "Inactivo")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => AbrirModalEditarProveedor(proveedorId)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarProveedor(proveedorId)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Paginación -->
+                    @if (TotalPaginas > 1)
+                    {
+                        <div class="d-flex justify-content-between align-items-center mt-3 px-3 pb-3">
+                            <div class="text-muted">
+                                Mostrando @((paginaActual - 1) * elementosPorPagina + 1) - @Math.Min(paginaActual * elementosPorPagina, TodosLosFiltrados.Count()) de @TodosLosFiltrados.Count() proveedores
+                            </div>
+                            <nav>
+                                <ul class="pagination mb-0">
+                                    <li class="page-item @(paginaActual == 1 ? "disabled" : "")">
+                                        <button class="page-link" @onclick="() => CambiarPagina(paginaActual - 1)" disabled="@(paginaActual == 1)">
+                                            <i class="bi bi-chevron-left"></i> Anterior
+                                        </button>
+                                    </li>
+                                    
+                                    @for (int i = Math.Max(1, paginaActual - 2); i <= Math.Min(TotalPaginas, paginaActual + 2); i++)
+                                    {
+                                        var pagina = i;
+                                        <li class="page-item @(paginaActual == pagina ? "active" : "")">
+                                            <button class="page-link" @onclick="() => CambiarPagina(pagina)">@pagina</button>
+                                        </li>
+                                    }
+                                    
+                                    <li class="page-item @(paginaActual == TotalPaginas ? "disabled" : "")">
+                                        <button class="page-link" @onclick="() => CambiarPagina(paginaActual + 1)" disabled="@(paginaActual == TotalPaginas)">
+                                            Siguiente <i class="bi bi-chevron-right"></i>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <p><em>Cargando...</em></p>
+    }
+</div>
+
+<!-- Modal de Proveedor -->
+@if (mostrarModal && proveedorEditando != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <!-- Botones fijos en la parte superior -->
+                <div class="modal-header bg-light sticky-top" style="z-index: 1050;">
+                    <h5 class="modal-title">@(proveedorEditando.Id > 0 ? "Editar Proveedor" : "Nuevo Proveedor")</h5>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-primary" @onclick="GuardarProveedor">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                        <button type="button" class="btn btn-secondary" @onclick="CerrarModal">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="modal-body">
+                    <!-- Datos Básicos -->
+                    <h5 class="mb-3"><i class="bi bi-building"></i> Datos Básicos</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Nombre/Razón Social *</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.Nombre" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">NIF/CIF</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.NIF" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Persona de Contacto</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.PersonaContacto" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Sitio Web</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.Web" placeholder="https://www.ejemplo.com" />
+                        </div>
+                    </div>
+
+                    <!-- Dirección -->
+                    <hr class="my-4" />
+                    <h5 class="mb-3"><i class="bi bi-geo-alt"></i> Dirección</h5>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Dirección</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.Direccion" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Ciudad</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.Ciudad" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Código Postal</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.CodigoPostal" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Provincia</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.Provincia" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">País</label>
+                            <InputSelect class="form-select" @bind-Value="proveedorEditando.Pais">
+                                <option value="ESP">España</option>
+                                <option value="FRA">Francia</option>
+                                <option value="PRT">Portugal</option>
+                                <option value="ITA">Italia</option>
+                                <option value="DEU">Alemania</option>
+                                <option value="GBR">Reino Unido</option>
+                                <option value="NLD">Países Bajos</option>
+                                <option value="BEL">Bélgica</option>
+                                <option value="LUX">Luxemburgo</option>
+                                <option value="IRL">Irlanda</option>
+                                <option value="DNK">Dinamarca</option>
+                                <option value="SWE">Suecia</option>
+                                <option value="FIN">Finlandia</option>
+                                <option value="AUT">Austria</option>
+                                <option value="POL">Polonia</option>
+                                <option value="CZE">República Checa</option>
+                                <option value="GRC">Grecia</option>
+                                <option value="HUN">Hungría</option>
+                                <option value="ROU">Rumanía</option>
+                                <option value="BGR">Bulgaria</option>
+                                <option value="HRV">Croacia</option>
+                                <option value="SVN">Eslovenia</option>
+                                <option value="SVK">Eslovaquia</option>
+                                <option value="EST">Estonia</option>
+                                <option value="LVA">Letonia</option>
+                                <option value="LTU">Lituania</option>
+                                <option value="MLT">Malta</option>
+                                <option value="CYP">Chipre</option>
+                                <option value="USA">Estados Unidos</option>
+                                <option value="CAN">Canadá</option>
+                                <option value="MEX">México</option>
+                                <option value="BRA">Brasil</option>
+                                <option value="ARG">Argentina</option>
+                                <option value="CHL">Chile</option>
+                                <option value="COL">Colombia</option>
+                                <option value="PER">Perú</option>
+                                <option value="VEN">Venezuela</option>
+                                <option value="CHN">China</option>
+                                <option value="JPN">Japón</option>
+                                <option value="KOR">Corea del Sur</option>
+                                <option value="IND">India</option>
+                                <option value="AUS">Australia</option>
+                                <option value="NZL">Nueva Zelanda</option>
+                                <option value="ZAF">Sudáfrica</option>
+                                <option value="MAR">Marruecos</option>
+                                <option value="TUN">Túnez</option>
+                                <option value="EGY">Egipto</option>
+                                <option value="CHE">Suiza</option>
+                                <option value="NOR">Noruega</option>
+                                <option value="ISL">Islandia</option>
+                                <option value="AND">Andorra</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+
+                    <!-- Contacto -->
+                    <hr class="my-4" />
+                    <h5 class="mb-3"><i class="bi bi-telephone"></i> Contacto</h5>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Teléfono</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.Telefono" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Fax</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.Fax" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Email</label>
+                            <InputText type="email" class="form-control" @bind-Value="proveedorEditando.Email" />
+                        </div>
+                    </div>
+
+                    <!-- Datos Financieros -->
+                    <hr class="my-4" />
+                    <h5 class="mb-3"><i class="bi bi-credit-card"></i> Datos Financieros</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Cuenta Bancaria / IBAN</label>
+                            <InputText class="form-control" @bind-Value="proveedorEditando.CuentaBancaria" placeholder="ES00 0000 0000 00 0000000000" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Forma de Pago</label>
+                            <InputSelect class="form-select" @bind-Value="proveedorEditando.FormaPago">
+                                <option value="">-- Selecciona --</option>
+                                <option value="@FormaPago.Efectivo">Efectivo</option>
+                                <option value="@FormaPago.Transferencia">Transferencia</option>
+                                <option value="@FormaPago.TarjetaCredito">Tarjeta Crédito</option>
+                                <option value="@FormaPago.TarjetaDebito">Tarjeta Débito</option>
+                                <option value="@FormaPago.Bizum">Bizum</option>
+                                <option value="@FormaPago.Domiciliacion">Domiciliación</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Días de Pago</label>
+                            <InputNumber class="form-control" @bind-Value="proveedorEditando.DiasPago" placeholder="30, 60, 90..." />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Observaciones</label>
+                            <InputTextArea class="form-control" @bind-Value="proveedorEditando.Observaciones" rows="3" />
+                        </div>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <InputCheckbox class="form-check-input" @bind-Value="proveedorEditando.Activo" id="activoCheck" />
+                        <label class="form-check-label" for="activoCheck">
+                            Proveedor activo
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Proveedor>? proveedores;
+    private string _busqueda = string.Empty;
+    private string _filtroEstado = string.Empty;
+    private bool mostrarModal = false;
+    private int paginaActual = 1;
+    private int elementosPorPagina = 10;
+    private Proveedor proveedorEditando = new() 
+    { 
+        FechaCreacion = DateTime.Now, 
+        Activo = true,
+        Pais = "ESP"
+    };
+
+    private string Busqueda
+    {
+        get => _busqueda;
+        set
+        {
+            if (_busqueda != value)
+            {
+                _busqueda = value;
+                paginaActual = 1;
+            }
+        }
+    }
+
+    private string FiltroEstado
+    {
+        get => _filtroEstado;
+        set
+        {
+            if (_filtroEstado != value)
+            {
+                _filtroEstado = value;
+                paginaActual = 1;
+            }
+        }
+    }
+
+    private IEnumerable<Proveedor> TodosLosFiltrados
+    {
+        get
+        {
+            if (proveedores == null) return Enumerable.Empty<Proveedor>();
+
+            var resultado = proveedores.AsEnumerable();
+
+            // Filtro de búsqueda
+            if (!string.IsNullOrWhiteSpace(_busqueda))
+            {
+                resultado = resultado.Where(p =>
+                    (p.Nombre?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (p.NIF?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (p.Email?.Contains(_busqueda, StringComparison.OrdinalIgnoreCase) ?? false)
+                );
+            }
+
+            // Filtro por estado
+            if (!string.IsNullOrEmpty(_filtroEstado))
+            {
+                if (bool.TryParse(_filtroEstado, out var activo))
+                {
+                    resultado = resultado.Where(p => p.Activo == activo);
+                }
+            }
+
+            return resultado;
+        }
+    }
+
+    private IEnumerable<Proveedor> ProveedoresFiltrados
+    {
+        get
+        {
+            return TodosLosFiltrados
+                .Skip((paginaActual - 1) * elementosPorPagina)
+                .Take(elementosPorPagina);
+        }
+    }
+
+    private int TotalPaginas => (int)Math.Ceiling((double)TodosLosFiltrados.Count() / elementosPorPagina);
+
+    private void CambiarPagina(int pagina)
+    {
+        if (pagina >= 1 && pagina <= TotalPaginas)
+        {
+            paginaActual = pagina;
+            StateHasChanged();
+        }
+    }
+
+    private void ReiniciarPaginacion()
+    {
+        paginaActual = 1;
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarProveedores();
+    }
+
+    private async Task CargarProveedores()
+    {
+        proveedores = await ProveedorService.ObtenerTodosAsync();
+    }
+
+    private void AbrirModalNuevoProveedor()
+    {
+        Console.WriteLine("AbrirModalNuevoProveedor llamado");
+        proveedorEditando = new Proveedor 
+        { 
+            FechaCreacion = DateTime.Now, 
+            Activo = true,
+            Pais = "ESP"
+        };
+        mostrarModal = true;
+        Console.WriteLine($"Modal abierto: {mostrarModal}");
+        StateHasChanged();
+    }
+
+    private async Task AbrirModalEditarProveedor(int id)
+    {
+        Console.WriteLine($"AbrirModalEditarProveedor llamado con ID: {id}");
+        var proveedor = await ProveedorService.ObtenerPorIdAsync(id);
+        Console.WriteLine($"Proveedor obtenido: {proveedor?.Nombre ?? "NULL"}");
+        
+        if (proveedor != null)
+        {
+            proveedorEditando = new Proveedor
+            {
+                Id = proveedor.Id,
+                Nombre = proveedor.Nombre,
+                NIF = proveedor.NIF,
+                Direccion = proveedor.Direccion,
+                Ciudad = proveedor.Ciudad,
+                CodigoPostal = proveedor.CodigoPostal,
+                Provincia = proveedor.Provincia,
+                Pais = proveedor.Pais,
+                Telefono = proveedor.Telefono,
+                Email = proveedor.Email,
+                Fax = proveedor.Fax,
+                PersonaContacto = proveedor.PersonaContacto,
+                Web = proveedor.Web,
+                CuentaBancaria = proveedor.CuentaBancaria,
+                FormaPago = proveedor.FormaPago,
+                DiasPago = proveedor.DiasPago,
+                Observaciones = proveedor.Observaciones,
+                Activo = proveedor.Activo,
+                FechaCreacion = proveedor.FechaCreacion,
+                EmpresaId = proveedor.EmpresaId
+            };
+            mostrarModal = true;
+            Console.WriteLine($"Modal abierto: {mostrarModal}");
+            StateHasChanged();
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "No se pudo cargar el proveedor.");
+        }
+    }
+
+    private async Task GuardarProveedor()
+    {
+        try
+        {
+            Console.WriteLine($"GuardarProveedor - ID: {proveedorEditando.Id}, Nombre: {proveedorEditando.Nombre}");
+            
+            if (proveedorEditando.Id > 0)
+            {
+                Console.WriteLine("Actualizando proveedor...");
+                await ProveedorService.ActualizarAsync(proveedorEditando.Id, proveedorEditando);
+            }
+            else
+            {
+                Console.WriteLine("Creando proveedor...");
+                await ProveedorService.CrearAsync(proveedorEditando);
+            }
+            
+            Console.WriteLine("Proveedor guardado exitosamente");
+            CerrarModal();
+            await CargarProveedores();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al guardar proveedor: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al guardar el proveedor: {ex.Message}");
+        }
+    }
+
+    private void CerrarModal()
+    {
+        Console.WriteLine("CerrarModal llamado");
+        mostrarModal = false;
+        proveedorEditando = new Proveedor 
+        { 
+            FechaCreacion = DateTime.Now, 
+            Activo = true,
+            Pais = "ESP"
+        };
+        Console.WriteLine($"Modal cerrado, mostrarModal: {mostrarModal}");
+        StateHasChanged();
+    }
+
+    private async Task EliminarProveedor(int id)
+    {
+        var confirmado = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este proveedor?");
+        if (confirmado)
+        {
+            await ProveedorService.EliminarAsync(id);
+            await CargarProveedores();
+            StateHasChanged();
+        }
+    }
+}

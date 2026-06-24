@@ -1,0 +1,797 @@
+﻿@page "/"
+@using FactioX.Models
+@using FactioX.Services
+@inject IAuthService AuthService
+@inject IClienteService ClienteService
+@inject IProveedorService ProveedorService
+@inject IProductoService ProductoService
+@inject IPresupuestoService PresupuestoService
+@inject IFacturaService FacturaService
+@inject IEmpresaService EmpresaService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex align-items-center" style="padding: 2rem 0 1.5rem;">
+                <img src="LogoFactioxFIN.png" alt="FactioX" style="height: 50px; margin-right: 1rem;" />
+                <h1 class="welcome-title mb-0">Bienvenido</h1>
+            </div>
+        </div>
+    </div>
+
+    @if (cargando)
+    {
+        <p><em>Cargando estadísticas...</em></p>
+    }
+    else if (AuthService.Rol == Roles.Asesoria)
+    {
+        <!-- Vista específica para Asesoría -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h3 class="mb-4"><i class="bi bi-briefcase-fill"></i> Panel de Asesoría</h3>
+                        <p class="lead">Como asesoría, tienes acceso de solo lectura a las facturas de compra y venta de las empresas bajo tu supervisión.</p>
+                        <hr />
+                        <h5>Tus responsabilidades:</h5>
+                        <ul>
+                            <li><strong>Consulta de facturas:</strong> Revisa las facturas de venta y compra de todas tus empresas asociadas</li>
+                            <li><strong>Exportación de datos:</strong> Genera informes en Excel para análisis externos</li>
+                            <li><strong>Filtrado por empresa:</strong> Filtra la información por cada una de las empresas que gestionas</li>
+                            <li><strong>Supervisión financiera:</strong> Monitorea la actividad fiscal y financiera de tus clientes</li>
+                        </ul>
+                        
+                        @if (empresasAsociadas != null && empresasAsociadas.Any())
+                        {
+                            <div class="mt-4">
+                                <h5>Empresas bajo tu supervisión:</h5>
+                                <div class="row">
+                                    @foreach (var empresa in empresasAsociadas)
+                                    {
+                                        <div class="col-md-4 mb-3">
+                                            <div class="card border-success">
+                                                <div class="card-body">
+                                                    <h6 class="card-title"><i class="bi bi-building"></i> @empresa.NombreComercial</h6>
+                                                    <p class="card-text small text-muted mb-0">Slug: @empresa.Slug</p>
+                                                    <p class="card-text small text-muted">Plan: @empresa.PlanSuscripcion</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mapa de Clientes -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header" style="background: linear-gradient(135deg, #1976d2, #2196f3); color: white;">
+                        <h5 class="mb-0"><i class="bi bi-geo-alt-fill"></i> Distribución Geográfica de Clientes</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="mapaClientesAsesoria" style="height: 500px; width: 100%;"></div>
+                    </div>
+                    <div class="card-footer bg-white border-0">
+                        <div class="text-center">
+                            <span class="badge" style="background-color: #4caf50; font-size: 0.9rem; padding: 0.5rem 1rem;">
+                                <i class="bi bi-circle-fill"></i> Clientes (@totalClientesAsesoria)
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acciones rápidas para Asesoría -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Acciones Rápidas</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-lg-6 col-md-6 mb-2">
+                                <button class="btn btn-success w-100" @onclick='() => Navigation.NavigateTo("/facturas-venta")'>
+                                    <i class="bi bi-receipt fs-4 d-block mb-2"></i>
+                                    Ver Facturas de Venta
+                                </button>
+                            </div>
+                            <div class="col-lg-6 col-md-6 mb-2">
+                                <button class="btn btn-danger w-100" @onclick='() => Navigation.NavigateTo("/facturas-compra")'>
+                                    <i class="bi bi-receipt-cutoff fs-4 d-block mb-2"></i>
+                                    Ver Facturas de Compra
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Tarjetas de resumen principales -->
+        <div class="row mb-4">
+            <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+                <div class="card dashboard-card card-clientes text-center h-100">
+                    <div class="card-icon-container">
+                        <i class="bi bi-people"></i>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-number">@totalClientes</h2>
+                        <p class="card-label">Clientes</p>
+                        <small class="text-muted">@clientesActivos activos</small>
+                    </div>
+                    <div class="card-footer bg-transparent border-0">
+                        <button class="btn btn-card btn-sm" @onclick='() => Navigation.NavigateTo("/clientes")'>
+                            Ver Clientes
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+                <div class="card dashboard-card card-proveedores text-center h-100">
+                    <div class="card-icon-container">
+                        <i class="bi bi-truck"></i>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-number">@totalProveedores</h2>
+                        <p class="card-label">Proveedores</p>
+                        <small class="text-muted">@proveedoresActivos activos</small>
+                    </div>
+                    <div class="card-footer bg-transparent border-0">
+                        <button class="btn btn-card btn-sm" @onclick='() => Navigation.NavigateTo("/proveedores")'>
+                            Ver Proveedores
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+                <div class="card dashboard-card card-productos text-center h-100">
+                    <div class="card-icon-container">
+                        <i class="bi bi-box-seam"></i>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-number">@totalProductos</h2>
+                        <p class="card-label">Productos</p>
+                        @if (productosStockBajo > 0)
+                        {
+                            <small class="text-warning">⚠️ @productosStockBajo stock bajo</small>
+                        }
+                        else
+                        {
+                            <small class="text-muted">@productosActivos activos</small>
+                        }
+                    </div>
+                    <div class="card-footer bg-transparent border-0">
+                        <button class="btn btn-card btn-sm" @onclick='() => Navigation.NavigateTo("/productos")'>
+                            Ver Catálogo
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+                <div class="card dashboard-card card-presupuestos text-center h-100">
+                    <div class="card-icon-container">
+                        <i class="bi bi-file-earmark-text"></i>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-number">@totalPresupuestos</h2>
+                        <p class="card-label">Presupuestos</p>
+                        <small class="text-muted">@presupuestosPendientes pendientes</small>
+                    </div>
+                    <div class="card-footer bg-transparent border-0">
+                        <button class="btn btn-card btn-sm" @onclick='() => Navigation.NavigateTo("/presupuestos")'>
+                            Ver Presupuestos
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+                <div class="card dashboard-card card-facturas-venta text-center h-100">
+                    <div class="card-icon-container">
+                        <i class="bi bi-receipt"></i>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-number">@facturasVenta</h2>
+                        <p class="card-label">F. Venta</p>
+                        <small class="text-muted">@totalFacturado.ToString("C0")</small>
+                    </div>
+                    <div class="card-footer bg-transparent border-0">
+                        <button class="btn btn-card btn-sm" @onclick='() => Navigation.NavigateTo("/facturas-venta")'>
+                            Ver Facturas
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+                <div class="card dashboard-card card-facturas-compra text-center h-100">
+                    <div class="card-icon-container">
+                        <i class="bi bi-receipt-cutoff"></i>
+                    </div>
+                    <div class="card-body">
+                        <h2 class="card-number">@facturasCompra</h2>
+                        <p class="card-label">F. Compra</p>
+                        <small class="text-muted">@totalCompras.ToString("C0")</small>
+                    </div>
+                    <div class="card-footer bg-transparent border-0">
+                        <button class="btn btn-card btn-sm" @onclick='() => Navigation.NavigateTo("/facturas-compra")'>
+                            Ver Facturas
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráficos de Análisis -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header chart-header-verde-oscuro text-white">
+                        <h5 class="mb-0">Facturación Mensual (Venta)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <div class="bar-chart">
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 60%;">
+                                        <span class="bar-value">€6,000</span>
+                                    </div>
+                                    <span class="bar-label">Ene</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 75%;">
+                                        <span class="bar-value">€7,500</span>
+                                    </div>
+                                    <span class="bar-label">Feb</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 85%;">
+                                        <span class="bar-value">€8,500</span>
+                                    </div>
+                                    <span class="bar-label">Mar</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 70%;">
+                                        <span class="bar-value">€7,000</span>
+                                    </div>
+                                    <span class="bar-label">Abr</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 90%;">
+                                        <span class="bar-value">€9,000</span>
+                                    </div>
+                                    <span class="bar-label">May</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 95%;">
+                                        <span class="bar-value">€9,500</span>
+                                    </div>
+                                    <span class="bar-label">Jun</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header chart-header-verde-medio text-white">
+                        <h5 class="mb-0">Distribución de Presupuestos</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <div class="pie-chart-container">
+                                <div class="pie-chart">
+                                    <div class="pie-segment approved" style="--percentage: 60%;">
+                                    </div>
+                                </div>
+                                <div class="pie-legend">
+                                    <div class="legend-item">
+                                        <span class="legend-color" style="background-color: #4caf50;"></span>
+                                        <span class="legend-text">Aprobados (60%)</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-color" style="background-color: #ff9800;"></span>
+                                        <span class="legend-text">Pendientes (25%)</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <span class="legend-color" style="background-color: #f44336;"></span>
+                                        <span class="legend-text">Rechazados (15%)</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header chart-header-verde-claro text-white">
+                        <h5 class="mb-0">Facturación Mensual (compra)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <div class="bar-chart">
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 50%; background-color: #81c784;">
+                                        <span class="bar-value">€4,000</span>
+                                    </div>
+                                    <span class="bar-label">Ene</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 65%; background-color: #81c784;">
+                                        <span class="bar-value">€5,200</span>
+                                    </div>
+                                    <span class="bar-label">Feb</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 70%; background-color: #81c784;">
+                                        <span class="bar-value">€5,600</span>
+                                    </div>
+                                    <span class="bar-label">Mar</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 55%; background-color: #81c784;">
+                                        <span class="bar-value">€4,400</span>
+                                    </div>
+                                    <span class="bar-label">Abr</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 80%; background-color: #81c784;">
+                                        <span class="bar-value">€6,400</span>
+                                    </div>
+                                    <span class="bar-label">May</span>
+                                </div>
+                                <div class="bar-item">
+                                    <div class="bar" style="height: 75%; background-color: #81c784;">
+                                        <span class="bar-value">€6,000</span>
+                                    </div>
+                                    <span class="bar-label">Jun</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mapa Geográfico Unificado -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header" style="background: linear-gradient(135deg, #1976d2, #2196f3); color: white;">
+                        <h5 class="mb-0"><i class="bi bi-geo-alt-fill"></i> Distribución Geográfica</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="mapaGeneral" style="height: 500px; width: 100%;"></div>
+                    </div>
+                    <div class="card-footer bg-white border-0">
+                        <div class="row text-center">
+                            <div class="col-md-4">
+                                <span class="badge" style="background-color: #4caf50; font-size: 0.9rem; padding: 0.5rem 1rem;">
+                                    <i class="bi bi-circle-fill"></i> Facturas Venta
+                                </span>
+                            </div>
+                            <div class="col-md-4">
+                                <span class="badge" style="background-color: #d32f2f; font-size: 0.9rem; padding: 0.5rem 1rem;">
+                                    <i class="bi bi-circle-fill"></i> Facturas Compra
+                                </span>
+                            </div>
+                            <div class="col-md-4">
+                                <span class="badge" style="background-color: #f57c00; font-size: 0.9rem; padding: 0.5rem 1rem;">
+                                    <i class="bi bi-circle-fill"></i> Presupuestos
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resumen financiero -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header chart-header-verde-claro text-white">
+                        <h5 class="mb-0">Resumen Financiero</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-md-4">
+                                <h6 class="text-muted">Total Facturado</h6>
+                                <h3 class="text-success">@totalFacturado.ToString("C2")</h3>
+                            </div>
+                            <div class="col-md-4">
+                                <h6 class="text-muted">Facturas Pagadas</h6>
+                                <h3 class="text-primary">@totalPagado.ToString("C2")</h3>
+                            </div>
+                            <div class="col-md-4">
+                                <h6 class="text-muted">Pendiente de Cobro</h6>
+                                <h3 class="text-warning">@totalPendiente.ToString("C2")</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acciones rápidas -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Acciones Rápidas</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-lg-2 col-md-4 col-sm-6 mb-2">
+                                <button class="btn btn-primary w-100" @onclick='() => Navigation.NavigateTo("/clientes")'>
+                                    <i class="bi bi-person-plus fs-4 d-block mb-2"></i>
+                                    Nuevo Cliente
+                                </button>
+                            </div>
+                            <div class="col-lg-2 col-md-4 col-sm-6 mb-2">
+                                <button class="btn btn-secondary w-100" @onclick='() => Navigation.NavigateTo("/proveedores")'>
+                                    <i class="bi bi-truck fs-4 d-block mb-2"></i>
+                                    Nuevo Proveedor
+                                </button>
+                            </div>
+                            <div class="col-lg-2 col-md-4 col-sm-6 mb-2">
+                                <button class="btn btn-info w-100" @onclick='() => Navigation.NavigateTo("/productos")'>
+                                    <i class="bi bi-plus-square fs-4 d-block mb-2"></i>
+                                    Nuevo Producto
+                                </button>
+                            </div>
+                            <div class="col-lg-2 col-md-4 col-sm-6 mb-2">
+                                <button class="btn btn-warning w-100" @onclick='() => Navigation.NavigateTo("/presupuestos/nuevo")'>
+                                    <i class="bi bi-file-earmark-plus fs-4 d-block mb-2"></i>
+                                    Nuevo Presupuesto
+                                </button>
+                            </div>
+                            <div class="col-lg-2 col-md-4 col-sm-6 mb-2">
+                                <button class="btn btn-success w-100" @onclick='() => Navigation.NavigateTo("/facturas-venta")'>
+                                    <i class="bi bi-receipt-cutoff fs-4 d-block mb-2"></i>
+                                    Factura Venta
+                                </button>
+                            </div>
+                            <div class="col-lg-2 col-md-4 col-sm-6 mb-2">
+                                <button class="btn btn-danger w-100" @onclick='() => Navigation.NavigateTo("/facturas-compra")'>
+                                    <i class="bi bi-receipt fs-4 d-block mb-2"></i>
+                                    Factura Compra
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool cargando = true;
+    private List<Empresa>? empresasAsociadas;
+    private List<Cliente>? clientesAsesoria;
+    private int totalClientesAsesoria = 0;
+    
+    // Contadores totales
+    private int totalClientes = 0;
+    private int totalProveedores = 0;
+    private int totalProductos = 0;
+    private int totalPresupuestos = 0;
+    private int facturasVenta = 0;
+    private int facturasCompra = 0;
+    
+    // Contadores específicos
+    private int clientesActivos = 0;
+    private int proveedoresActivos = 0;
+    private int productosActivos = 0;
+    private int productosStockBajo = 0;
+    private int presupuestosPendientes = 0;
+    
+    // Financiero
+    private decimal totalFacturado = 0;
+    private decimal totalCompras = 0;
+    private decimal totalPagado = 0;
+    private decimal totalPendiente = 0;
+    
+    // Distribución geográfica
+    private List<DistribucionGeografica>? facturasVentaPorCP;
+    private List<DistribucionGeografica>? facturasCompraPorCP;
+    private List<DistribucionGeografica>? presupuestosPorCP;
+    
+    public class DistribucionGeografica
+    {
+        public string CodigoPostal { get; set; } = string.Empty;
+        public string Ciudad { get; set; } = string.Empty;
+        public string Provincia { get; set; } = string.Empty;
+        public int Cantidad { get; set; }
+        public decimal Total { get; set; }
+    }
+
+    private bool mapasInicializados = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AuthService.InicializarAsync();
+
+            if (!AuthService.EstaAutenticado)
+            {
+                Navigation.NavigateTo("/login", forceLoad: true);
+            }
+            else
+            {
+                await CargarEstadisticas();
+                cargando = false;
+                StateHasChanged();
+            }
+        }
+        
+        // Inicializar mapa después de que los datos estén cargados
+        if (!cargando && !mapasInicializados)
+        {
+            if (AuthService.Rol == Roles.Asesoria && clientesAsesoria != null && clientesAsesoria.Any())
+            {
+                await InicializarMapaClientes();
+                mapasInicializados = true;
+            }
+            else if (AuthService.Rol != Roles.Asesoria && (facturasVentaPorCP != null || facturasCompraPorCP != null || presupuestosPorCP != null))
+            {
+                await InicializarMapa();
+                mapasInicializados = true;
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // No cargar nada aquí, esperar a verificar autenticación en OnAfterRenderAsync
+    }
+
+    private async Task CargarEstadisticas()
+    {
+        try
+        {
+            // Si es Asesoría, cargar solo empresas y clientes asociados
+            if (AuthService.Rol == Roles.Asesoria)
+            {
+                // Cargar empresas asociadas
+                if (AuthService.EmpresaIds != null && AuthService.EmpresaIds.Any())
+                {
+                    empresasAsociadas = new List<Empresa>();
+                    foreach (var empresaId in AuthService.EmpresaIds)
+                    {
+                        var empresa = await EmpresaService.ObtenerPorIdAsync(empresaId);
+                        if (empresa != null)
+                        {
+                            empresasAsociadas.Add(empresa);
+                        }
+                    }
+                }
+
+                // Cargar todos los clientes de las empresas asociadas
+                var todosLosClientes = await ClienteService.ObtenerTodosAsync();
+                if (AuthService.EmpresaIds != null)
+                {
+                    clientesAsesoria = todosLosClientes
+                        .Where(c => AuthService.EmpresaIds.Contains(c.EmpresaId))
+                        .ToList();
+                    totalClientesAsesoria = clientesAsesoria.Count;
+                }
+                return;
+            }
+
+            // Para otros roles, cargar todas las estadísticas
+            // Cargar datos de todas las entidades
+            var clientes = await ClienteService.ObtenerTodosAsync();
+            var proveedores = await ProveedorService.ObtenerTodosAsync();
+            var productos = await ProductoService.ObtenerTodosAsync();
+            var presupuestos = await PresupuestoService.ObtenerTodosAsync();
+            var facturas = await FacturaService.ObtenerTodosAsync();
+
+            // Clientes
+            totalClientes = clientes.Count;
+            clientesActivos = clientes.Count(c => c.Activo);
+
+            // Proveedores
+            totalProveedores = proveedores.Count;
+            proveedoresActivos = proveedores.Count(p => p.Activo);
+
+            // Productos
+            totalProductos = productos.Count;
+            productosActivos = productos.Count(p => p.Activo);
+            productosStockBajo = productos.Count(p => 
+                p.Tipo == TipoProducto.Producto && 
+                p.Stock.HasValue && 
+                p.StockMinimo.HasValue && 
+                p.Stock < p.StockMinimo);
+
+            // Presupuestos
+            totalPresupuestos = presupuestos.Count;
+            presupuestosPendientes = presupuestos.Count(p => p.Estado == EstadoPresupuesto.Enviado || p.Estado == EstadoPresupuesto.Borrador);
+
+            // Facturas
+            var facturasDeVenta = facturas.Where(f => f.TipoFactura == TipoFactura.Venta).ToList();
+            var facturasDeCompra = facturas.Where(f => f.TipoFactura == TipoFactura.Compra).ToList();
+            
+            facturasVenta = facturasDeVenta.Count;
+            facturasCompra = facturasDeCompra.Count;
+
+            // Financiero (solo ventas)
+            totalFacturado = facturasDeVenta.Sum(f => f.Total);
+            totalPagado = facturasDeVenta.Where(f => f.Estado == EstadoFactura.Pagada).Sum(f => f.Total);
+            totalPendiente = facturasDeVenta.Where(f => f.Estado == EstadoFactura.Emitida || f.Estado == EstadoFactura.Vencida).Sum(f => f.Total);
+            
+            // Total compras
+            totalCompras = facturasDeCompra.Sum(f => f.Total);
+            
+            // Distribución geográfica de facturas de venta
+            facturasVentaPorCP = facturasDeVenta
+                .Where(f => f.Cliente != null && !string.IsNullOrEmpty(f.Cliente.CodigoPostal))
+                .GroupBy(f => new { f.Cliente!.CodigoPostal, f.Cliente.Ciudad, f.Cliente.Provincia })
+                .Select(g => new DistribucionGeografica
+                {
+                    CodigoPostal = g.Key.CodigoPostal ?? "",
+                    Ciudad = g.Key.Ciudad ?? "Desconocida",
+                    Provincia = g.Key.Provincia ?? "Desconocida",
+                    Cantidad = g.Count(),
+                    Total = g.Sum(f => f.Total)
+                })
+                .OrderByDescending(d => d.Total)
+                .ToList();
+            
+            // Distribución geográfica de facturas de compra
+            facturasCompraPorCP = facturasDeCompra
+                .Where(f => f.Proveedor != null && !string.IsNullOrEmpty(f.Proveedor.CodigoPostal))
+                .GroupBy(f => new { f.Proveedor!.CodigoPostal, f.Proveedor.Ciudad, f.Proveedor.Provincia })
+                .Select(g => new DistribucionGeografica
+                {
+                    CodigoPostal = g.Key.CodigoPostal ?? "",
+                    Ciudad = g.Key.Ciudad ?? "Desconocida",
+                    Provincia = g.Key.Provincia ?? "Desconocida",
+                    Cantidad = g.Count(),
+                    Total = g.Sum(f => f.Total)
+                })
+                .OrderByDescending(d => d.Total)
+                .ToList();
+            
+            // Distribución geográfica de presupuestos
+            presupuestosPorCP = presupuestos
+                .Where(p => p.Cliente != null && !string.IsNullOrEmpty(p.Cliente.CodigoPostal))
+                .GroupBy(p => new { p.Cliente!.CodigoPostal, p.Cliente.Ciudad, p.Cliente.Provincia })
+                .Select(g => new DistribucionGeografica
+                {
+                    CodigoPostal = g.Key.CodigoPostal ?? "",
+                    Ciudad = g.Key.Ciudad ?? "Desconocida",
+                    Provincia = g.Key.Provincia ?? "Desconocida",
+                    Cantidad = g.Count(),
+                    Total = g.Sum(p => p.Total)
+                })
+                .OrderByDescending(d => d.Total)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar estadísticas: {ex.Message}");
+        }
+    }
+
+    private async Task InicializarMapa()
+    {
+        try
+        {
+            var todasLasUbicaciones = new List<object>();
+
+            // Preparar datos de facturas de venta para el mapa
+            if (facturasVentaPorCP != null && facturasVentaPorCP.Any())
+            {
+                var locationsVenta = facturasVentaPorCP.Take(10).Select(f => new
+                {
+                    ciudad = f.Ciudad,
+                    provincia = f.Provincia,
+                    codigoPostal = f.CodigoPostal,
+                    cantidad = f.Cantidad,
+                    total = f.Total,
+                    totalFormateado = f.Total.ToString("C0"),
+                    tipo = "factura_venta"
+                });
+                todasLasUbicaciones.AddRange(locationsVenta);
+            }
+
+            // Preparar datos de facturas de compra para el mapa
+            if (facturasCompraPorCP != null && facturasCompraPorCP.Any())
+            {
+                var locationsCompra = facturasCompraPorCP.Take(10).Select(f => new
+                {
+                    ciudad = f.Ciudad,
+                    provincia = f.Provincia,
+                    codigoPostal = f.CodigoPostal,
+                    cantidad = f.Cantidad,
+                    total = f.Total,
+                    totalFormateado = f.Total.ToString("C0"),
+                    tipo = "factura_compra"
+                });
+                todasLasUbicaciones.AddRange(locationsCompra);
+            }
+
+            // Preparar datos de presupuestos para el mapa
+            if (presupuestosPorCP != null && presupuestosPorCP.Any())
+            {
+                var locationsPresupuestos = presupuestosPorCP.Take(10).Select(p => new
+                {
+                    ciudad = p.Ciudad,
+                    provincia = p.Provincia,
+                    codigoPostal = p.CodigoPostal,
+                    cantidad = p.Cantidad,
+                    total = p.Total,
+                    totalFormateado = p.Total.ToString("C0"),
+                    tipo = "presupuesto"
+                });
+                todasLasUbicaciones.AddRange(locationsPresupuestos);
+            }
+
+            // Inicializar un solo mapa con todas las ubicaciones
+            if (todasLasUbicaciones.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("initializeMap", "mapaGeneral", todasLasUbicaciones.ToArray());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error inicializando mapa: {ex.Message}");
+        }
+    }
+
+    private async Task InicializarMapaClientes()
+    {
+        try
+        {
+            if (clientesAsesoria == null || !clientesAsesoria.Any())
+                return;
+
+            // Agrupar clientes por ubicación
+            var clientesPorUbicacion = clientesAsesoria
+                .Where(c => !string.IsNullOrEmpty(c.CodigoPostal))
+                .GroupBy(c => new { c.CodigoPostal, c.Ciudad, c.Provincia })
+                .Select(g => new
+                {
+                    ciudad = g.Key.Ciudad ?? "Desconocida",
+                    provincia = g.Key.Provincia ?? "Desconocida",
+                    codigoPostal = g.Key.CodigoPostal ?? "",
+                    cantidad = g.Count(),
+                    tipo = "cliente"
+                })
+                .ToList();
+
+            if (clientesPorUbicacion.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("initializeMap", "mapaClientesAsesoria", clientesPorUbicacion.ToArray());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error inicializando mapa de clientes: {ex.Message}");
+        }
+    }
+}

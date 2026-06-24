@@ -1,0 +1,77 @@
+@page "/test-db"
+@using FactioX.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ApplicationDbContext> ContextFactory
+
+<h3>Test de Conexión a Base de Datos</h3>
+
+@if (loading)
+{
+    <p>Cargando...</p>
+}
+else if (error != null)
+{
+    <div class="alert alert-danger">
+        <strong>Error:</strong> @error
+    </div>
+}
+else
+{
+    <div class="alert alert-success">
+        <strong>Conexión exitosa!</strong>
+        <ul>
+            <li>Empresas: @empresasCount</li>
+            <li>Usuarios: @usuariosCount</li>
+            <li>Clientes: @clientesCount</li>
+        </ul>
+        
+        @if (adminUser != null)
+        {
+            <hr/>
+            <h4>Usuario Admin encontrado:</h4>
+            <ul>
+                <li>Id: @adminUser.Id</li>
+                <li>Username: @adminUser.Username</li>
+                <li>Password: @adminUser.Password</li>
+                <li>Rol: @adminUser.Rol</li>
+                <li>Activo: @adminUser.Activo</li>
+                <li>EmpresaId: @adminUser.EmpresaId</li>
+            </ul>
+        }
+        else
+        {
+            <div class="alert alert-warning">Usuario admin NO encontrado en la BD</div>
+        }
+    </div>
+}
+
+@code {
+    private bool loading = true;
+    private string? error = null;
+    private int empresasCount = 0;
+    private int usuariosCount = 0;
+    private int clientesCount = 0;
+    private Models.Usuario? adminUser = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var context = await ContextFactory.CreateDbContextAsync();
+            
+            empresasCount = await context.Empresas.CountAsync();
+            usuariosCount = await context.Usuarios.CountAsync();
+            clientesCount = await context.Clientes.CountAsync();
+            
+            adminUser = await context.Usuarios.FirstOrDefaultAsync(u => u.Username == "admin");
+        }
+        catch (Exception ex)
+        {
+            error = $"{ex.GetType().Name}: {ex.Message} --- InnerException: {ex.InnerException?.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

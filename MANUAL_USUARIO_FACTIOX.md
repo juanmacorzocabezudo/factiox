@@ -1,6 +1,6 @@
 # 📘 Manual de Usuario - FactioX
 
-**Versión Beta 24062026**
+**Versión Beta 09072026**
 
 ## 🎯 ¿Qué es FactioX?
 
@@ -314,4 +314,4 @@ Consulta planes y precios con nuestro equipo comercial.
 
 **FactioX** - Tu solución integral de gestión empresarial 🚀
 
-*Desarrollado en España 🇪🇸 | Versión Beta 24062026*
+*Desarrollado en España 🇪🇸 | Versión Beta 09072026*

@@ -61,6 +61,7 @@ public class ConfiguracionEmpresa
     // Configuración general de facturación
     public decimal IVAPorDefecto { get; set; } = 21m;
     public int DiasVencimientoPorDefecto { get; set; } = 30;
+    public decimal RetencionIRPFPorDefecto { get; set; } = 0m;
     
     // Certificado digital para firma electrónica
     public string? CertificadoRuta { get; set; }

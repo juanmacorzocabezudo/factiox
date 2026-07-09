@@ -389,11 +389,16 @@
                     </div>
                     <div class="card-body">
                         <div class="row">
-                            <div class="col-md-6 mb-3">
+                            <div class="col-md-4 mb-3">
                                 <label class="form-label">IVA por Defecto (%)</label>
                                 <input type="number" step="0.01" class="form-control" @bind="configuracion.IVAPorDefecto" />
                             </div>
-                            <div class="col-md-6 mb-3">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label">Retención IRPF (%)</label>
+                                <input type="number" step="0.01" class="form-control" @bind="configuracion.RetencionIRPFPorDefecto" />
+                                <small class="text-muted">Retención por defecto en facturas</small>
+                            </div>
+                            <div class="col-md-4 mb-3">
                                 <label class="form-label">Días de Vencimiento</label>
                                 <input type="number" class="form-control" @bind="configuracion.DiasVencimientoPorDefecto" />
                                 <small class="text-muted">Días para pagar la factura</small>
@@ -543,6 +548,7 @@
                 LongitudNumeroPresupuesto = 4,
                 IVAPorDefecto = 21m,
                 DiasVencimientoPorDefecto = 30,
+                RetencionIRPFPorDefecto = 0m,
                 TipoPersona = TipoPersona.Juridica,
                 TipoResidencia = TipoResidencia.Residente,
                 Pais = "ESP"

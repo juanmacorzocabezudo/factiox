@@ -1,4 +1,5 @@
 @page "/facturas-venta"
+@page "/abonos-venta"
 @using FactioX.Models
 @using FactioX.Services
 @using System.IO
@@ -20,14 +21,17 @@
 @inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
-<PageTitle>Facturas de Venta - FactioX</PageTitle>
+<PageTitle>@(EsPaginaAbonos ? "Abonos de Venta" : "Facturas de Venta") - FactioX</PageTitle>
 
 <div class="container-fluid">
     <div class="mb-3 d-flex justify-content-between align-items-center">
-        <h2><i class="bi bi-receipt"></i> Facturas de Venta</h2>
+        <h2><i class="bi @(EsPaginaAbonos ? "bi-arrow-return-left" : "bi-receipt")"></i> @(EsPaginaAbonos ? "Abonos de Venta" : "Facturas de Venta")</h2>
         <div>
             @if (AuthService.Rol == Roles.Asesoria)
             {
+                <button class="btn btn-outline-success me-1" @onclick="ImprimirFacturasFiltradas" disabled="@(imprimiendoFacturas || !FacturasFiltradas.Any())" title="Imprimir todas las facturas filtradas">
+                    <i class="bi bi-printer"></i> @(imprimiendoFacturas ? "Preparando..." : "Imprimir facturas")
+                </button>
                 <button class="btn btn-success" @onclick="ExportarAExcel" disabled="@(facturas == null || !FacturasFiltradas.Any())">
                     <i class="bi bi-file-earmark-excel"></i> Exportar a Excel
                 </button>
@@ -35,7 +39,7 @@
             else
             {
                 <button class="btn" style="background-color: #28a745; color: white;" @onclick="NuevaFactura">
-                    <i class="bi bi-plus-circle"></i> Nueva Factura de Venta
+                    <i class="bi bi-plus-circle"></i> @(EsPaginaAbonos ? "Nuevo Abono de Venta" : "Nueva Factura de Venta")
                 </button>
             }
         </div>
@@ -68,6 +72,35 @@
             </div>
             @if (AuthService.Rol == Roles.Asesoria)
             {
+                <div class="row mt-3 g-3">
+                    <div class="col-md-3">
+                        <label for="anioFacturasVenta" class="form-label">Año</label>
+                        <select id="anioFacturasVenta" class="form-select" @bind="filtroAnio">
+                            @foreach (var anio in AniosDisponibles)
+                            {
+                                <option value="@anio">@anio</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="periodoFacturasVenta" class="form-label">Periodo</label>
+                        <select id="periodoFacturasVenta" class="form-select" @bind="filtroPeriodo">
+                            <option value="0">Todo el año</option>
+                            <optgroup label="Trimestres">
+                                <option value="101">1.º trimestre (enero - marzo)</option>
+                                <option value="102">2.º trimestre (abril - junio)</option>
+                                <option value="103">3.º trimestre (julio - septiembre)</option>
+                                <option value="104">4.º trimestre (octubre - diciembre)</option>
+                            </optgroup>
+                            <optgroup label="Meses">
+                                @for (var mes = 1; mes <= 12; mes++)
+                                {
+                                    <option value="@mes">@System.Globalization.CultureInfo.GetCultureInfo("es-ES").DateTimeFormat.GetMonthName(mes)</option>
+                                }
+                            </optgroup>
+                        </select>
+                    </div>
+                </div>
                 <div class="row mt-3">
                     <div class="col-md-12">
                         <label class="form-label"><strong>Filtrar por empresas:</strong></label>
@@ -113,7 +146,7 @@
     else if (!facturas.Any())
     {
         <div class="alert" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
-            <i class="bi bi-info-circle"></i> No hay facturas de venta registradas.
+            <i class="bi bi-info-circle"></i> @(EsPaginaAbonos ? "No hay abonos de venta registrados." : "No hay facturas de venta registradas.")
         </div>
     }
     else
@@ -138,6 +171,7 @@
                                 <th>Vencimiento</th>
                                 <th class="text-end">Base</th>
                                 <th class="text-end">IVA</th>
+                                <th class="text-end">IRPF</th>
                                 <th class="text-end">Total</th>
                                 @if (AuthService.Rol != Roles.Asesoria)
                                 {
@@ -154,7 +188,13 @@
                                 <tr class="@(factura.Estado == EstadoFactura.Vencida ? "table-warning" : "")" 
                                     @ondblclick="@(() => AbrirFactura(factura.Id))" 
                                     style="cursor: pointer;">
-                                    <td><strong>@factura.NumeroFactura</strong></td>
+                                    <td>
+                                        <strong>@factura.NumeroFactura</strong>
+                                        @if (factura.EsAbono && !string.IsNullOrWhiteSpace(factura.NumeroFacturaOriginal))
+                                        {
+                                            <small class="d-block text-muted">Rectifica: @factura.NumeroFacturaOriginal</small>
+                                        }
+                                    </td>
                                     @if (AuthService.Rol == Roles.Asesoria)
                                     {
                                         <td><span class="badge bg-secondary">@factura.Empresa?.NombreComercial</span></td>
@@ -176,6 +216,16 @@
                                     <td>@(factura.FechaVencimiento?.ToString("dd/MM/yyyy") ?? "-")</td>
                                     <td class="text-end">@factura.BaseImponible.ToString("C2")</td>
                                     <td class="text-end">@factura.ImporteIVA.ToString("C2")</td>
+                                    <td class="text-end">
+                                        @if (factura.ImporteRetencion != 0)
+                                        {
+                                            <span class="text-danger">@((-factura.ImporteRetencion).ToString("C2"))</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
                                     <td class="text-end"><strong>@factura.Total.ToString("C2")</strong></td>
                                     @if (AuthService.Rol != Roles.Asesoria)
                                     {
@@ -214,6 +264,12 @@
                                     <td>
                                         @if (AuthService.Rol != Roles.Asesoria)
                                         {
+                                            @if (!factura.EsAbono)
+                                            {
+                                                <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => RectificarFactura(factura.Id)" title="Crear abono de venta" aria-label="Crear abono de venta">
+                                                    <i class="bi bi-arrow-return-left"></i>
+                                                </button>
+                                            }
                                             @if (factura.PendientePago > 0)
                                             {
                                                 <button class="btn btn-sm btn-outline-success me-1" @onclick="() => GestionarPagos(factura.Id)" title="Gestionar Pagos">
@@ -277,7 +333,7 @@
                 <div class="col-md-3">
                     <div class="card" style="background-color: #1e7e34; color: white;">
                         <div class="card-body">
-                            <h6>Total Facturado</h6>
+                            <h6>@(EsPaginaAbonos ? "Total abonado" : "Total Facturado")</h6>
                             <h3>@facturas.Sum(f => f.Total).ToString("C2")</h3>
                             <small>@facturas.Count facturas</small>
                         </div>
@@ -353,13 +409,26 @@
                         }
                         else
                         {
-                            <text>@(facturaEditando?.Id > 0 ? "Editar" : "Nueva") Factura de Venta</text>
+                            <text>@(facturaEditando.Id > 0 ? "Editar" : facturaEditando.EsAbono ? "Nuevo" : "Nueva") @(facturaEditando.EsAbono ? "Abono de Venta" : "Factura de Venta")</text>
                         }
                     </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
                 </div>
                 <div class="modal-body">
                     <EditForm Model="@facturaEditando" OnValidSubmit="GuardarFactura">
+                        @if (facturaEditando.EsAbono)
+                        {
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label for="originalAbonoVenta" class="form-label">Factura original</label>
+                                    <input id="originalAbonoVenta" class="form-control" @bind="facturaEditando.NumeroFacturaOriginal" maxlength="50" disabled="@(facturaEditando.FacturaOriginalId.HasValue || AuthService.Rol == Roles.Asesoria)" />
+                                </div>
+                                <div class="col-md-8">
+                                    <label for="motivoAbonoVenta" class="form-label">Motivo de rectificación *</label>
+                                    <textarea id="motivoAbonoVenta" class="form-control" @bind="facturaEditando.MotivoRectificacion" maxlength="1000" required disabled="@(AuthService.Rol == Roles.Asesoria)"></textarea>
+                                </div>
+                            </div>
+                        }
                         <div class="row">
                             <div class="col-md-8">
                                 <div class="card mb-3">
@@ -371,7 +440,7 @@
                                             <div class="col-md-12 mb-3">
                                                 <label for="cliente" class="form-label">Cliente *</label>
                                                 <div class="input-group">
-                                                    <select id="cliente" class="form-select" value="@facturaEditando.ClienteId" @onchange="@((ChangeEventArgs e) => OnClienteChangedAsync(int.Parse(e.Value?.ToString() ?? "0")))" disabled="@(AuthService.Rol == Roles.Asesoria)">
+                                                    <select id="cliente" class="form-select" value="@facturaEditando.ClienteId" @onchange="@((ChangeEventArgs e) => OnClienteChangedAsync(int.Parse(e.Value?.ToString() ?? "0")))" disabled="@(AuthService.Rol == Roles.Asesoria || cargandoFacturaAbono || (facturaEditando.Id > 0 && facturaEditando.FacturaOriginalId.HasValue))">
                                                         <option value="0">Seleccione un cliente...</option>
                                                         @if (clientes != null && clientes.Any())
                                                         {
@@ -405,6 +474,25 @@
                                                 }
                                             </div>
                                         </div>
+                                        @if (facturaEditando.EsAbono && facturaEditando.Id == 0 && AuthService.Rol != Roles.Asesoria)
+                                        {
+                                            <div class="row">
+                                                <div class="col-12 mb-3">
+                                                    <label for="facturaParaAbonoVenta" class="form-label">Factura a abonar</label>
+                                                    <select id="facturaParaAbonoVenta" class="form-select" value="@facturaEditando.FacturaOriginalId.GetValueOrDefault()" @onchange="CargarFacturaAbono" disabled="@(cargandoFacturaAbono || !facturaEditando.ClienteId.HasValue || facturaEditando.ClienteId == 0)">
+                                                        <option value="0">Abono manual (sin factura seleccionada)</option>
+                                                        @foreach (var original in FacturasParaAbonar)
+                                                        {
+                                                            <option value="@original.Id">@original.NumeroFactura - @original.FechaEmision.ToString("dd/MM/yyyy") - @original.Total.ToString("C2")</option>
+                                                        }
+                                                    </select>
+                                                    @if (cargandoFacturaAbono)
+                                                    {
+                                                        <span class="text-muted" role="status">Cargando factura...</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
                                         <div class="row">
                                             <div class="col-md-3 mb-3">
                                                 <label for="fecha" class="form-label">Fecha Emisión *</label>
@@ -619,8 +707,8 @@
                                         <div class="row">
                                             <div class="col-md-3 mb-3">
                                                 <label class="form-label">Clase de Factura</label>
-                                                <InputSelect class="form-select" @bind-Value="facturaEditando.ClaseFactura" disabled="@(AuthService.Rol == Roles.Asesoria)">
-                                                    @foreach (var clase in Enum.GetValues<ClaseFactura>())
+                                                <InputSelect class="form-select" @bind-Value="facturaEditando.ClaseFactura" disabled="@(AuthService.Rol == Roles.Asesoria || facturaEditando.EsAbono)">
+                                                    @foreach (var clase in Enum.GetValues<ClaseFactura>().Where(clase => clase != ClaseFactura.Rectificativa || facturaEditando.EsAbono))
                                                     {
                                                         <option value="@clase">@clase</option>
                                                     }
@@ -628,7 +716,7 @@
                                             </div>
                                             <div class="col-md-3 mb-3">
                                                 <label class="form-label">Tipo de Factura</label>
-                                                <InputSelect class="form-select" @bind-Value="facturaEditando.TipoFactura" disabled="@(AuthService.Rol == Roles.Asesoria)">
+                                                <InputSelect class="form-select" @bind-Value="facturaEditando.TipoFactura" disabled="@(AuthService.Rol == Roles.Asesoria || facturaEditando.EsAbono)">
                                                     @foreach (var tipo in Enum.GetValues<TipoFactura>())
                                                     {
                                                         <option value="@tipo">@tipo</option>
@@ -809,13 +897,22 @@
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #28a745; color: white;">
                     <h5 class="modal-title">
-                        <i class="bi bi-eye"></i> Ver Factura de Venta @(facturaVisualizacion != null ? $"- {facturaVisualizacion.NumeroFactura}" : "")
+                        <i class="bi bi-eye"></i> @(facturaVisualizacion?.EsAbono == true ? "Ver Abono de Venta" : "Ver Factura de Venta") @(facturaVisualizacion != null ? $"- {facturaVisualizacion.NumeroFactura}" : "")
                     </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="CerrarModalVer"></button>
                 </div>
                 <div class="modal-body">
                     @if (facturaVisualizacion != null)
                     {
+                        @if (facturaVisualizacion.EsAbono)
+                        {
+                            <dl class="row mb-3">
+                                <dt class="col-sm-3">Factura original</dt>
+                                <dd class="col-sm-9">@(facturaVisualizacion.NumeroFacturaOriginal ?? "Sin referencia")</dd>
+                                <dt class="col-sm-3">Motivo de rectificación</dt>
+                                <dd class="col-sm-9">@facturaVisualizacion.MotivoRectificacion</dd>
+                            </dl>
+                        }
                         <div class="row">
                             <div class="col-md-8">
                             <!-- Datos del Cliente -->
@@ -1001,18 +1098,18 @@
                                         <span>Subtotal Líneas:</span>
                                         <strong>@facturaVisualizacion.Subtotal.ToString("C2")</strong>
                                     </div>
-                                    @if (facturaVisualizacion.DescuentosGenerales > 0)
+                                    @if (facturaVisualizacion.DescuentosGenerales != 0)
                                     {
                                         <div class="d-flex justify-content-between mb-2">
                                             <span>Descuentos:</span>
-                                            <strong class="text-danger">-@facturaVisualizacion.DescuentosGenerales.ToString("C2")</strong>
+                                            <strong class="text-danger">@((-facturaVisualizacion.DescuentosGenerales).ToString("C2"))</strong>
                                         </div>
                                     }
-                                    @if (facturaVisualizacion.RecargosGenerales > 0)
+                                    @if (facturaVisualizacion.RecargosGenerales != 0)
                                     {
                                         <div class="d-flex justify-content-between mb-2">
                                             <span>Recargos:</span>
-                                            <strong class="text-success">+@facturaVisualizacion.RecargosGenerales.ToString("C2")</strong>
+                                            <strong class="text-success">@facturaVisualizacion.RecargosGenerales.ToString("C2")</strong>
                                         </div>
                                     }
                                     <hr />
@@ -1024,18 +1121,18 @@
                                         <span>IVA:</span>
                                         <strong>@facturaVisualizacion.TotalIVA.ToString("C2")</strong>
                                     </div>
-                                    @if (facturaVisualizacion.CargosAdicionales > 0)
+                                    @if (facturaVisualizacion.CargosAdicionales != 0)
                                     {
                                         <div class="d-flex justify-content-between mb-2">
                                             <span>Cargos Adicionales:</span>
                                             <strong>@facturaVisualizacion.CargosAdicionales.ToString("C2")</strong>
                                         </div>
                                     }
-                                    @if (facturaVisualizacion.ImporteRetencion > 0)
+                                    @if (facturaVisualizacion.ImporteRetencion != 0)
                                     {
                                         <div class="d-flex justify-content-between mb-2">
                                             <span>Retención IRPF:</span>
-                                            <strong class="text-danger">-@facturaVisualizacion.ImporteRetencion.ToString("C2")</strong>
+                                            <strong class="text-danger">@((-facturaVisualizacion.ImporteRetencion).ToString("C2"))</strong>
                                         </div>
                                     }
                                     <hr />
@@ -1483,16 +1580,28 @@
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "rectificar")]
+    public int? FacturaARectificar { get; set; }
+    private int? facturaRectificadaCargada;
+    private bool? modoAbonosCargado;
+    private bool EsPaginaAbonos => new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/').EndsWith("/abonos-venta", StringComparison.OrdinalIgnoreCase);
     private List<Factura>? facturas;
+    private List<Factura> facturasOriginalesAbono = new();
+    private bool cargandoFacturaAbono;
+    private IEnumerable<Factura> FacturasParaAbonar => facturasOriginalesAbono
+        .Where(f => f.ClienteId == facturaEditando.ClienteId);
     private List<Cliente>? clientes;
     private List<Producto>? productos;
     private List<FormaPagoPersonalizada>? formasPago;
     private List<Empresa>? empresasAsociadas;
     private string busqueda = "";
     private string filtroEstado = "";
+    private int filtroAnio = DateTime.Today.Year;
+    private int filtroPeriodo;
     private DateTime? filtroFechaDesde;
     private DateTime? filtroFechaHasta;
     private List<int> filtroEmpresaIds = new List<int>();
+    private bool imprimiendoFacturas;
     private bool mostrarModal = false;
     private Factura facturaEditando = new Factura { TipoFactura = TipoFactura.Venta, Lineas = new List<LineaDocumento>() };
     
@@ -1514,6 +1623,13 @@
     private PagoFactura? pagoDetalle;
     private PagoFactura nuevoPago = new PagoFactura();
 
+    private IEnumerable<int> AniosDisponibles => (facturas ?? new List<Factura>())
+        .Select(f => f.FechaEmision.Year)
+        .Append(DateTime.Today.Year)
+        .Append(filtroAnio)
+        .Distinct()
+        .OrderByDescending(anio => anio);
+
     private IEnumerable<Factura> FacturasFiltradas
     {
         get
@@ -1521,6 +1637,17 @@
             if (facturas == null) return Enumerable.Empty<Factura>();
 
             var resultado = facturas.AsEnumerable();
+
+            if (AuthService.Rol == Roles.Asesoria)
+            {
+                resultado = resultado.Where(f => f.FechaEmision.Year == filtroAnio);
+                if (filtroPeriodo != 0)
+                {
+                    var mesInicio = filtroPeriodo >= 101 ? (filtroPeriodo - 101) * 3 + 1 : filtroPeriodo;
+                    var mesFin = filtroPeriodo >= 101 ? mesInicio + 2 : mesInicio;
+                    resultado = resultado.Where(f => f.FechaEmision.Month >= mesInicio && f.FechaEmision.Month <= mesFin);
+                }
+            }
 
             // Filtrar por búsqueda (número o cliente)
             if (!string.IsNullOrWhiteSpace(busqueda))
@@ -1579,6 +1706,40 @@
         {
             filtroEmpresaIds.Clear();
         }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (modoAbonosCargado != EsPaginaAbonos)
+        {
+            CerrarModal();
+            mostrarModalVer = false;
+            facturaRectificadaCargada = null;
+            await CargarFacturas();
+        }
+        if (!FacturaARectificar.HasValue) facturaRectificadaCargada = null;
+        if (!EsPaginaAbonos || !FacturaARectificar.HasValue || facturaRectificadaCargada == FacturaARectificar || AuthService.Rol == Roles.Asesoria)
+            return;
+        facturaRectificadaCargada = FacturaARectificar;
+        try
+        {
+            var abono = await FacturaService.CrearBorradorAbonoAsync(FacturaARectificar.Value);
+            if (abono.TipoFactura != TipoFactura.Venta)
+                throw new InvalidOperationException("Seleccione una factura de venta.");
+            facturaEditando = abono;
+            mostrarModal = true;
+            CalcularTotalModal();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"No se pudo preparar el abono: {ex.Message}");
+        }
+    }
+
+    private void RectificarFactura(int id)
+    {
+        if (AuthService.Rol != Roles.Asesoria)
+            Navigation.NavigateTo($"/abonos-venta?rectificar={id}");
     }
 
     protected override async Task OnInitializedAsync()
@@ -1674,17 +1835,14 @@
 
     private async Task CargarFacturas()
     {
-        // Si es Asesoría, cargar facturas de todas las empresas asociadas
-        if (AuthService.Rol == Roles.Asesoria)
-        {
-            var todasLasFacturas = await FacturaService.ObtenerPorEmpresasAsync(AuthService.EmpresaIds);
-            facturas = todasLasFacturas.Where(f => f.TipoFactura == TipoFactura.Venta).ToList();
-        }
-        else
-        {
-            var todasLasFacturas = await FacturaService.ObtenerTodosAsync();
-            facturas = todasLasFacturas.Where(f => f.TipoFactura == TipoFactura.Venta).ToList();
-        }
+        var todasLasFacturas = AuthService.Rol == Roles.Asesoria
+            ? await FacturaService.ObtenerPorEmpresasAsync(AuthService.EmpresaIds)
+            : await FacturaService.ObtenerTodosAsync();
+        facturas = todasLasFacturas.Where(f => f.TipoFactura == TipoFactura.Venta && f.EsAbono == EsPaginaAbonos).ToList();
+        facturasOriginalesAbono = todasLasFacturas
+            .Where(f => f.TipoFactura == TipoFactura.Venta && !f.EsAbono && f.EmpresaId == AuthService.EmpresaId)
+            .OrderByDescending(f => f.FechaEmision).ToList();
+        modoAbonosCargado = EsPaginaAbonos;
         
         if (facturas != null && facturas.Any())
         {
@@ -1714,14 +1872,57 @@
         }
     }
 
+    private async Task CargarFacturaAbono(ChangeEventArgs e)
+    {
+        if (AuthService.Rol == Roles.Asesoria || cargandoFacturaAbono || !facturaEditando.EsAbono || facturaEditando.Id > 0
+            || !int.TryParse(e.Value?.ToString(), out var facturaId))
+            return;
+        if (facturaId == 0)
+        {
+            facturaEditando.FacturaOriginalId = null;
+            facturaEditando.NumeroFacturaOriginal = null;
+            return;
+        }
+        if (!FacturasParaAbonar.Any(f => f.Id == facturaId))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Seleccione una factura del cliente elegido.");
+            return;
+        }
+
+        var borrador = facturaEditando;
+        cargandoFacturaAbono = true;
+        try
+        {
+            var abono = await FacturaService.CrearBorradorAbonoAsync(facturaId);
+            if (!mostrarModal || !ReferenceEquals(facturaEditando, borrador)) return;
+            if (abono.TipoFactura != TipoFactura.Venta || abono.ClienteId != borrador.ClienteId)
+                throw new InvalidOperationException("La factura debe ser de venta y pertenecer al cliente seleccionado.");
+            abono.MotivoRectificacion = borrador.MotivoRectificacion;
+            abono.FechaEmision = borrador.FechaEmision;
+            abono.Estado = borrador.Estado;
+            facturaEditando = abono;
+            CalcularTotalModal();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"No se pudo cargar la factura para abonar: {ex.Message}");
+        }
+        finally
+        {
+            cargandoFacturaAbono = false;
+        }
+    }
+
     private async Task NuevaFactura()
     {
+        if (AuthService.Rol == Roles.Asesoria) return;
         var config = await ConfiguracionEmpresaService.ObtenerConfiguracionAsync();
         
         facturaEditando = new Factura
         {
             FechaEmision = DateTime.Now,
             TipoFactura = TipoFactura.Venta,
+            ClaseFactura = EsPaginaAbonos ? ClaseFactura.Rectificativa : ClaseFactura.Original,
             Estado = EstadoFactura.Borrador,
             PorcentajeRetencion = config?.RetencionIRPFPorDefecto ?? 0m,
             Lineas = new List<LineaDocumento>()
@@ -2096,6 +2297,51 @@
         }
     }
 
+    private async Task ImprimirFacturasFiltradas()
+    {
+        if (imprimiendoFacturas || AuthService.Rol != Roles.Asesoria)
+            return;
+
+        var facturasParaImprimir = FacturasFiltradas.ToList();
+        if (facturasParaImprimir.Count == 0)
+            return;
+
+        imprimiendoFacturas = true;
+        try
+        {
+            var documentos = new List<(Factura Factura, ConfiguracionEmpresa? Configuracion)>();
+            var configuraciones = new Dictionary<int, ConfiguracionEmpresa?>();
+
+            foreach (var factura in facturasParaImprimir)
+            {
+                var facturaCompleta = await FacturaService.ObtenerPorIdYEmpresasAsync(factura.Id, AuthService.EmpresaIds);
+                if (facturaCompleta == null || facturaCompleta.Cliente == null || facturaCompleta.TipoFactura != TipoFactura.Venta)
+                    throw new InvalidOperationException($"No se pueden cargar los datos de la factura {factura.NumeroFactura}.");
+
+                if (!configuraciones.TryGetValue(facturaCompleta.EmpresaId, out var configuracion))
+                {
+                    configuracion = await ConfiguracionEmpresaService.ObtenerPorEmpresaIdAsync(facturaCompleta.EmpresaId);
+                    configuraciones.Add(facturaCompleta.EmpresaId, configuracion);
+                }
+
+                documentos.Add((facturaCompleta, configuracion));
+            }
+
+            var pdfBytes = FacturaPdfService.GenerarFacturasPdf(documentos);
+            using var stream = new MemoryStream(pdfBytes);
+            using var streamReference = new Microsoft.JSInterop.DotNetStreamReference(stream);
+            await JSRuntime.InvokeVoidAsync("printPdfFromStream", streamReference);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error al imprimir las facturas filtradas: {ex.Message}");
+        }
+        finally
+        {
+            imprimiendoFacturas = false;
+        }
+    }
+
     private async Task Imprimir(Factura factura)
     {
         try
@@ -2194,6 +2440,7 @@
 
     private async Task GuardarFactura()
     {
+        if (AuthService.Rol == Roles.Asesoria || cargandoFacturaAbono) return;
         try
         {
             // Validaciones
@@ -2483,6 +2730,19 @@
     
     private async Task OnClienteChangedAsync(int clienteId)
     {
+        if (AuthService.Rol == Roles.Asesoria || cargandoFacturaAbono
+            || (facturaEditando.Id > 0 && facturaEditando.FacturaOriginalId.HasValue)) return;
+        if (facturaEditando.EsAbono && facturaEditando.Id == 0 && facturaEditando.ClienteId != clienteId)
+        {
+            facturaEditando = new Factura
+            {
+                TipoFactura = TipoFactura.Venta,
+                ClaseFactura = ClaseFactura.Rectificativa,
+                FechaEmision = facturaEditando.FechaEmision,
+                MotivoRectificacion = facturaEditando.MotivoRectificacion,
+                Estado = facturaEditando.Estado
+            };
+        }
         Console.WriteLine($"========== [FacturasVenta] OnClienteChangedAsync - ClienteId: {clienteId} ==========");
         
         facturaEditando.ClienteId = clienteId;
@@ -2553,6 +2813,7 @@
 
     private void CalcularTotalModal()
     {
+        facturaEditando.PrepararImportesAbono();
         // Calcular importes de cada línea primero
         foreach (var linea in facturaEditando.Lineas)
         {

@@ -52,6 +52,15 @@ public class ConfiguracionEmpresa
     public int NumeroFacturaCompraActual { get; set; } = 1;
     public int LongitudNumeroFacturaCompra { get; set; } = 4;
     public bool IncluirAñoEnSerieCompra { get; set; } = true;
+
+    public string SerieAbonoVenta { get; set; } = "AV";
+    public int NumeroAbonoVentaActual { get; set; } = 0;
+    public int LongitudNumeroAbonoVenta { get; set; } = 4;
+    public bool IncluirAnioEnSerieAbonoVenta { get; set; } = true;
+    public string SerieAbonoCompra { get; set; } = "AC";
+    public int NumeroAbonoCompraActual { get; set; } = 0;
+    public int LongitudNumeroAbonoCompra { get; set; } = 4;
+    public bool IncluirAnioEnSerieAbonoCompra { get; set; } = true;
     
     // Configuración de presupuestos
     public string SeriePresupuesto { get; set; } = "PRES";

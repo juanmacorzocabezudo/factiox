@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefaultItemExcludes>$(DefaultItemExcludes);publish*/**;publicado/**</DefaultItemExcludes>
     <Version>27.02.2026</Version>
     <AssemblyVersion>27.02.2026</AssemblyVersion>
     <FileVersion>27.02.2026</FileVersion>

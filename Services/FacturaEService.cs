@@ -46,6 +46,9 @@ public class FacturaEService : IFacturaEService
             throw new Exception("Factura no encontrada");
         }
 
+        if (factura.EsAbono)
+            throw new InvalidOperationException("La exportación FacturaE de abonos requiere los metadatos fiscales de rectificación y todavía no está disponible. Puede imprimir el abono en PDF.");
+
         var configuracion = await context.ConfiguracionEmpresa
             .FirstOrDefaultAsync(c => c.EmpresaId == factura.EmpresaId);
 

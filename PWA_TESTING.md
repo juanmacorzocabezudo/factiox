@@ -54,30 +54,21 @@ En la pestaña "Application":
 
 Expande cada caché para ver los archivos almacenados.
 
-### 6. Banner de Instalación
+### 6. Ausencia de Avisos de Instalación
 
 Después de cargar la página:
-- Debería aparecer un **banner verde** en la esquina inferior derecha
-- Texto: "Instalar FactioX"
-- Botón: "Instalar"
-
-**Si no aparece el banner:**
-- El navegador podría haber bloqueado el evento `beforeinstallprompt`
-- Busca el icono de instalación (➕) en la barra de direcciones de Chrome
+- No debe aparecer ningún banner ni botón de instalación de FactioX
+- No debe abrirse automáticamente un diálogo de instalación
+- La instalación sigue disponible desde el menú o el icono del navegador compatible
 
 ### 7. Instalar la Aplicación
 
-#### Opción A: Usar el Banner
-1. Haz clic en el botón **"Instalar"** del banner
-2. Confirma la instalación en el diálogo del navegador
-3. La aplicación se instalará
-
-#### Opción B: Usar el Icono del Navegador
+#### Opción A: Usar el Icono del Navegador
 1. Busca el icono ➕ en la barra de direcciones
 2. Haz clic en **"Instalar FactioX"**
 3. Confirma la instalación
 
-#### Opción C: Menú del Navegador
+#### Opción B: Menú del Navegador
 1. Chrome: Menú (⋮) → **"Instalar FactioX"**
 2. Edge: Menú (···) → **"Aplicaciones"** → **"Instalar FactioX"**
 
@@ -158,7 +149,7 @@ Para obtener un score de PWA:
 4. **En el móvil:**
    - Abre Chrome
    - Navega a `localhost:5007`
-   - Instala la PWA desde el banner
+   - Instala la PWA desde el menú de Chrome
 
 #### iOS via BrowserStack / Simulador:
 
@@ -215,9 +206,9 @@ http://192.168.1.X:5007
 - [ ] El fallback a caché funciona sin conexión
 
 ### Test 5: User Experience
-- [ ] El banner de instalación aparece
-- [ ] El banner se puede cerrar
-- [ ] El banner no vuelve a aparecer en 24h después de cerrarse
+- [ ] No aparecen banners ni botones propios de instalación
+- [ ] No se abre automáticamente un diálogo de instalación
+- [ ] La instalación está disponible desde el navegador
 - [ ] La instalación es fluida y rápida
 
 ### Test 6: Updates
@@ -286,7 +277,7 @@ Cuando la PWA esté en producción, monitorea:
 - [ ] Manifest.json accesible y válido
 - [ ] Service Worker registrado correctamente
 - [ ] Cache Storage contiene archivos
-- [ ] Banner de instalación aparece
+- [ ] Sin avisos propios de instalación
 - [ ] Instalación funciona (Desktop)
 - [ ] Instalación funciona (Android)
 - [ ] Instalación funciona (iOS)

@@ -23,6 +23,59 @@ window.downloadFile = function (filename, base64Content, contentType) {
     window.URL.revokeObjectURL(link.href);
 };
 
+window.printPdfFromStream = async function (streamReference) {
+    const buffer = await streamReference.arrayBuffer();
+    const blob = new Blob([buffer], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    iframe.title = 'Facturas de venta para imprimir';
+
+    const cleanup = () => {
+        iframe.remove();
+        window.URL.revokeObjectURL(url);
+    };
+
+    return new Promise((resolve, reject) => {
+        iframe.onerror = () => {
+            cleanup();
+            reject(new Error('No se pudo cargar el PDF para imprimir.'));
+        };
+        iframe.onload = () => {
+            setTimeout(() => {
+                try {
+                    iframe.contentWindow.addEventListener('afterprint', cleanup, { once: true });
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                    resolve();
+                } catch (error) {
+                    cleanup();
+                    reject(error);
+                }
+            }, 250);
+        };
+        iframe.src = url;
+        document.body.appendChild(iframe);
+    });
+};
+
+window.downloadBinaryFile = async function (filename, streamReference, contentType) {
+    const buffer = await streamReference.arrayBuffer();
+    const blob = new Blob([buffer], { type: contentType });
+    const url = window.URL.createObjectURL(blob);
+    try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+    } finally {
+        window.URL.revokeObjectURL(url);
+    }
+};
+
 // Función para descargar archivos de texto directamente
 window.descargarArchivo = function (filename, textContent, contentType) {
     const blob = new Blob([textContent], { type: contentType });

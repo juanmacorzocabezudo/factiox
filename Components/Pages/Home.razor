@@ -247,46 +247,14 @@
                         <h5 class="mb-0">Facturación Mensual (Venta)</h5>
                     </div>
                     <div class="card-body">
-                        <div class="chart-container">
-                            <div class="bar-chart">
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 60%;">
-                                        <span class="bar-value">€6,000</span>
-                                    </div>
-                                    <span class="bar-label">Ene</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 75%;">
-                                        <span class="bar-value">€7,500</span>
-                                    </div>
-                                    <span class="bar-label">Feb</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 85%;">
-                                        <span class="bar-value">€8,500</span>
-                                    </div>
-                                    <span class="bar-label">Mar</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 70%;">
-                                        <span class="bar-value">€7,000</span>
-                                    </div>
-                                    <span class="bar-label">Abr</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 90%;">
-                                        <span class="bar-value">€9,000</span>
-                                    </div>
-                                    <span class="bar-label">May</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 95%;">
-                                        <span class="bar-value">€9,500</span>
-                                    </div>
-                                    <span class="bar-label">Jun</span>
-                                </div>
-                            </div>
+                        <p class="small text-muted">Últimos seis meses, incluido el actual</p>
+                        <div style="position: relative; height: 300px;">
+                            <canvas id="dashboardVentas" role="img" aria-label="Facturación mensual de venta de los últimos seis meses"></canvas>
                         </div>
+                        @if (!ventasMensuales.Any(importe => importe != 0))
+                        {
+                            <p class="text-muted text-center mt-2 mb-0">Sin importe facturado en este periodo</p>
+                        }
                     </div>
                 </div>
             </div>
@@ -297,28 +265,19 @@
                         <h5 class="mb-0">Distribución de Presupuestos</h5>
                     </div>
                     <div class="card-body">
-                        <div class="chart-container">
-                            <div class="pie-chart-container">
-                                <div class="pie-chart">
-                                    <div class="pie-segment approved" style="--percentage: 60%;">
-                                    </div>
-                                </div>
-                                <div class="pie-legend">
-                                    <div class="legend-item">
-                                        <span class="legend-color" style="background-color: #4caf50;"></span>
-                                        <span class="legend-text">Aprobados (60%)</span>
-                                    </div>
-                                    <div class="legend-item">
-                                        <span class="legend-color" style="background-color: #ff9800;"></span>
-                                        <span class="legend-text">Pendientes (25%)</span>
-                                    </div>
-                                    <div class="legend-item">
-                                        <span class="legend-color" style="background-color: #f44336;"></span>
-                                        <span class="legend-text">Rechazados (15%)</span>
-                                    </div>
-                                </div>
+                        <p class="small text-muted">@totalPresupuestos presupuestos · Todos los periodos</p>
+                        @if (totalPresupuestos == 0)
+                        {
+                            <div class="d-flex align-items-center justify-content-center" style="height: 300px;">
+                                <p class="text-muted">Sin presupuestos</p>
                             </div>
-                        </div>
+                        }
+                        else
+                        {
+                            <div style="position: relative; height: 300px;">
+                                <canvas id="dashboardPresupuestos" role="img" aria-label="Distribución de presupuestos por estado"></canvas>
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -326,49 +285,17 @@
             <div class="col-md-4">
                 <div class="card h-100">
                     <div class="card-header chart-header-verde-claro text-white">
-                        <h5 class="mb-0">Facturación Mensual (compra)</h5>
+                        <h5 class="mb-0">Facturación Mensual (Compra)</h5>
                     </div>
                     <div class="card-body">
-                        <div class="chart-container">
-                            <div class="bar-chart">
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 50%; background-color: #81c784;">
-                                        <span class="bar-value">€4,000</span>
-                                    </div>
-                                    <span class="bar-label">Ene</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 65%; background-color: #81c784;">
-                                        <span class="bar-value">€5,200</span>
-                                    </div>
-                                    <span class="bar-label">Feb</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 70%; background-color: #81c784;">
-                                        <span class="bar-value">€5,600</span>
-                                    </div>
-                                    <span class="bar-label">Mar</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 55%; background-color: #81c784;">
-                                        <span class="bar-value">€4,400</span>
-                                    </div>
-                                    <span class="bar-label">Abr</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 80%; background-color: #81c784;">
-                                        <span class="bar-value">€6,400</span>
-                                    </div>
-                                    <span class="bar-label">May</span>
-                                </div>
-                                <div class="bar-item">
-                                    <div class="bar" style="height: 75%; background-color: #81c784;">
-                                        <span class="bar-value">€6,000</span>
-                                    </div>
-                                    <span class="bar-label">Jun</span>
-                                </div>
-                            </div>
+                        <p class="small text-muted">Últimos seis meses, incluido el actual</p>
+                        <div style="position: relative; height: 300px;">
+                            <canvas id="dashboardCompras" role="img" aria-label="Facturación mensual de compra de los últimos seis meses"></canvas>
                         </div>
+                        @if (!comprasMensuales.Any(importe => importe != 0))
+                        {
+                            <p class="text-muted text-center mt-2 mb-0">Sin importe facturado en este periodo</p>
+                        }
                     </div>
                 </div>
             </div>
@@ -513,6 +440,12 @@
     private decimal totalCompras = 0;
     private decimal totalPagado = 0;
     private decimal totalPendiente = 0;
+    private string[] mesesFacturacion = Array.Empty<string>();
+    private decimal[] ventasMensuales = Array.Empty<decimal>();
+    private decimal[] comprasMensuales = Array.Empty<decimal>();
+    private string[] estadosPresupuestos = Array.Empty<string>();
+    private int[] cantidadesPresupuestos = Array.Empty<int>();
+    private bool graficosInicializados;
     
     // Distribución geográfica
     private List<DistribucionGeografica>? facturasVentaPorCP;
@@ -548,6 +481,19 @@
             }
         }
         
+        if (!firstRender && !cargando && !graficosInicializados && AuthService.Rol != Roles.Asesoria)
+        {
+            await JSRuntime.InvokeVoidAsync("renderDashboardCharts", new
+            {
+                meses = mesesFacturacion,
+                ventas = ventasMensuales,
+                compras = comprasMensuales,
+                estados = estadosPresupuestos,
+                presupuestos = cantidadesPresupuestos
+            });
+            graficosInicializados = true;
+        }
+
         // Inicializar mapa después de que los datos estén cargados
         if (!cargando && !mapasInicializados)
         {
@@ -610,6 +556,15 @@
             var presupuestos = await PresupuestoService.ObtenerTodosAsync();
             var facturas = await FacturaService.ObtenerTodosAsync();
 
+            if (AuthService.Rol != Roles.SuperAdministrador)
+            {
+                clientes = clientes.Where(c => c.EmpresaId == AuthService.EmpresaId).ToList();
+                proveedores = proveedores.Where(p => p.EmpresaId == AuthService.EmpresaId).ToList();
+                productos = productos.Where(p => p.EmpresaId == AuthService.EmpresaId).ToList();
+                presupuestos = presupuestos.Where(p => p.EmpresaId == AuthService.EmpresaId).ToList();
+                facturas = facturas.Where(f => f.EmpresaId == AuthService.EmpresaId).ToList();
+            }
+
             // Clientes
             totalClientes = clientes.Count;
             clientesActivos = clientes.Count(c => c.Activo);
@@ -637,6 +592,20 @@
             
             facturasVenta = facturasDeVenta.Count;
             facturasCompra = facturasDeCompra.Count;
+
+            var primerMes = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-5);
+            var meses = Enumerable.Range(0, 6).Select(indice => primerMes.AddMonths(indice)).ToArray();
+            var cultura = System.Globalization.CultureInfo.GetCultureInfo("es-ES");
+            mesesFacturacion = meses.Select(mes => mes.ToString("MMM yyyy", cultura)).ToArray();
+            ventasMensuales = meses.Select(mes => facturasDeVenta
+                .Where(f => f.FechaEmision >= mes && f.FechaEmision < mes.AddMonths(1))
+                .Sum(f => f.Total)).ToArray();
+            comprasMensuales = meses.Select(mes => facturasDeCompra
+                .Where(f => f.FechaEmision >= mes && f.FechaEmision < mes.AddMonths(1))
+                .Sum(f => f.Total)).ToArray();
+            var estados = Enum.GetValues<EstadoPresupuesto>();
+            estadosPresupuestos = estados.Select(estado => estado.ToString()).ToArray();
+            cantidadesPresupuestos = estados.Select(estado => presupuestos.Count(p => p.Estado == estado)).ToArray();
 
             // Financiero (solo ventas)
             totalFacturado = facturasDeVenta.Sum(f => f.Total);

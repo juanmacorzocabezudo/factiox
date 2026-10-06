@@ -121,6 +121,8 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.NIF).HasMaxLength(20).IsRequired();
             entity.Property(e => e.IBAN).HasMaxLength(34);
             entity.Property(e => e.SerieFactura).HasMaxLength(10);
+            entity.Property(e => e.SerieAbonoVenta).HasMaxLength(10).IsRequired();
+            entity.Property(e => e.SerieAbonoCompra).HasMaxLength(10).IsRequired();
             entity.Property(e => e.SeriePresupuesto).HasMaxLength(10);
             
             // Convertir enums a strings para la base de datos
@@ -237,6 +239,12 @@ public class ApplicationDbContext : DbContext
             entity.ToTable("Facturas");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.NumeroFactura).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.NumeroFacturaOriginal).HasMaxLength(50);
+            entity.Property(e => e.MotivoRectificacion).HasMaxLength(1000);
+            entity.HasOne<Factura>()
+                .WithMany()
+                .HasForeignKey(f => f.FacturaOriginalId)
+                .OnDelete(DeleteBehavior.Restrict);
             
             // Convertir enums a strings
             entity.Property(e => e.TipoFactura)

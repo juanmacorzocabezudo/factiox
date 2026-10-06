@@ -113,7 +113,7 @@ public class ExcelExportService : IExcelExportService
             worksheet.Cells[row, col].Value = factura.BaseImponible;
             worksheet.Cells[row, col++].Style.Numberformat.Format = "#,##0.00 €";
             
-            worksheet.Cells[row, col].Value = factura.PorcentajeIVA;
+            worksheet.Cells[row, col].Value = factura.PorcentajeIVA / 100m;
             worksheet.Cells[row, col++].Style.Numberformat.Format = "0.00%";
             
             worksheet.Cells[row, col].Value = factura.ImporteIVA;
@@ -122,7 +122,7 @@ public class ExcelExportService : IExcelExportService
             worksheet.Cells[row, col].Value = factura.CargosAdicionales;
             worksheet.Cells[row, col++].Style.Numberformat.Format = "#,##0.00 €";
             
-            worksheet.Cells[row, col].Value = factura.PorcentajeRetencion;
+            worksheet.Cells[row, col].Value = factura.PorcentajeRetencion / 100m;
             worksheet.Cells[row, col++].Style.Numberformat.Format = "0.00%";
             
             worksheet.Cells[row, col].Value = factura.ImporteRetencion;

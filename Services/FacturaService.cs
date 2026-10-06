@@ -13,7 +13,8 @@ public interface IFacturaService
     Task<Factura> CrearAsync(Factura factura);
     Task<Factura?> ActualizarAsync(int id, Factura factura);
     Task<bool> EliminarAsync(int id);
-    Task<string> GenerarNumeroAsync(TipoFactura tipoFactura);
+    Task<string> GenerarNumeroAsync(TipoFactura tipoFactura, ClaseFactura claseFactura = ClaseFactura.Original);
+    Task<Factura> CrearBorradorAbonoAsync(int facturaId);
     Task<Factura> CrearDesdePresupuestoAsync(int presupuestoId);
     Task<PagoFactura> RegistrarPagoAsync(PagoFactura pago);
     Task<bool> EliminarPagoAsync(int pagoId);
@@ -135,9 +136,12 @@ public class FacturaService : IFacturaService
             throw new InvalidOperationException("No se puede crear una factura sin empresa asignada");
         }
         
-        if (string.IsNullOrEmpty(factura.NumeroFactura))
+        await ValidarAbonoAsync(context, factura);
+        factura.PrepararImportesAbono();
+
+        if (!factura.EsAbono && string.IsNullOrEmpty(factura.NumeroFactura))
         {
-            factura.NumeroFactura = await GenerarNumeroAsync(factura.TipoFactura);
+            factura.NumeroFactura = await GenerarNumeroAsync(factura.TipoFactura, factura.ClaseFactura);
         }
         
         // Calcular importes de todas las líneas antes de guardar
@@ -156,10 +160,24 @@ public class FacturaService : IFacturaService
         factura.Empresa = null!;
         factura.Presupuesto = null;
         
-        // Recalcular totales de la factura
-        factura.BaseImponible = factura.Lineas.Sum(l => l.Subtotal);
+        // Calcular subtotal de líneas
+        var subtotal = factura.Lineas.Sum(l => l.Subtotal);
+        
+        // Calcular base imponible (subtotal - descuentos + recargos)
+        factura.BaseImponible = subtotal - factura.DescuentosGenerales + factura.RecargosGenerales;
+        
+        // Calcular IVA
         factura.ImporteIVA = factura.Lineas.Sum(l => l.ImporteIVA);
-        factura.Total = factura.BaseImponible + factura.ImporteIVA;
+        
+        // Calcular total (base + IVA + cargos - retención)
+        factura.Total = factura.BaseImponible + factura.ImporteIVA + factura.CargosAdicionales - factura.ImporteRetencion;
+
+        if (factura.EsAbono)
+        {
+            if (factura.Total >= 0)
+                throw new InvalidOperationException("El importe total del abono debe ser negativo.");
+            factura.NumeroFactura = await GenerarNumeroAsync(factura.TipoFactura, factura.ClaseFactura);
+        }
         
         context.Facturas.Add(factura);
         await context.SaveChangesAsync();
@@ -185,6 +203,13 @@ public class FacturaService : IFacturaService
             return null;
         }
 
+        if (existente.EsAbono != factura.EsAbono || (existente.EsAbono && existente.TipoFactura != factura.TipoFactura))
+            throw new InvalidOperationException("No se puede cambiar el tipo de un abono o convertir una factura guardada en abono. Cree un nuevo abono.");
+
+        factura.EmpresaId = existente.EmpresaId;
+        await ValidarAbonoAsync(context, factura);
+        factura.PrepararImportesAbono();
+
         existente.FechaEmision = factura.FechaEmision;
         existente.FechaVencimiento = factura.FechaVencimiento;
         existente.ClienteId = factura.ClienteId;
@@ -201,6 +226,24 @@ public class FacturaService : IFacturaService
         existente.NombreDocumento = factura.NombreDocumento;
         existente.TipoDocumento = factura.TipoDocumento;
         
+        // Actualizar campos de cálculo
+        existente.DescuentosGenerales = factura.DescuentosGenerales;
+        existente.RecargosGenerales = factura.RecargosGenerales;
+        existente.CargosAdicionales = factura.CargosAdicionales;
+        existente.PorcentajeRetencion = factura.PorcentajeRetencion;
+        existente.ImporteRetencion = factura.ImporteRetencion;
+        
+        // Actualizar campos de FacturaE
+        existente.LugarExpedicion = factura.LugarExpedicion;
+        existente.CodigoPostalExpedicion = factura.CodigoPostalExpedicion;
+        existente.FechaPeriodoInicio = factura.FechaPeriodoInicio;
+        existente.FechaPeriodoFin = factura.FechaPeriodoFin;
+        existente.ClaseFactura = factura.ClaseFactura;
+        existente.FacturaOriginalId = factura.FacturaOriginalId;
+        existente.NumeroFacturaOriginal = factura.NumeroFacturaOriginal;
+        existente.MotivoRectificacion = factura.MotivoRectificacion;
+        existente.FechaOperacion = factura.FechaOperacion;
+        
         // Calcular importes de todas las líneas antes de guardar
         foreach (var linea in factura.Lineas)
         {
@@ -211,10 +254,20 @@ public class FacturaService : IFacturaService
             linea.Producto = null;
         }
         
-        // Recalcular totales
-        existente.BaseImponible = factura.Lineas.Sum(l => l.Subtotal);
+        // Calcular subtotal de líneas
+        var subtotal = factura.Lineas.Sum(l => l.Subtotal);
+        
+        // Calcular base imponible (subtotal - descuentos + recargos)
+        existente.BaseImponible = subtotal - factura.DescuentosGenerales + factura.RecargosGenerales;
+        
+        // Calcular IVA
         existente.ImporteIVA = factura.Lineas.Sum(l => l.ImporteIVA);
-        existente.Total = existente.BaseImponible + existente.ImporteIVA;
+        
+        // Calcular total (base + IVA + cargos - retención)
+        existente.Total = existente.BaseImponible + existente.ImporteIVA + factura.CargosAdicionales - factura.ImporteRetencion;
+
+        if (existente.EsAbono && existente.Total >= 0)
+            throw new InvalidOperationException("El importe total del abono debe ser negativo.");
         
         // Actualizar líneas
         context.LineasDocumento.RemoveRange(existente.Lineas);
@@ -244,8 +297,57 @@ public class FacturaService : IFacturaService
         return true;
     }
 
-    public async Task<string> GenerarNumeroAsync(TipoFactura tipoFactura)
+    public async Task<Factura> CrearBorradorAbonoAsync(int facturaId)
     {
+        var original = await ObtenerPorIdAsync(facturaId)
+            ?? throw new InvalidOperationException("No se encontró la factura original.");
+        var empresaId = await _tenantService.GetEmpresaIdAsync();
+        if (!empresaId.HasValue || original.EmpresaId != empresaId.Value)
+            throw new InvalidOperationException("La factura original debe pertenecer a la empresa activa.");
+
+        return original.CrearBorradorAbono();
+    }
+
+    private static async Task ValidarAbonoAsync(ApplicationDbContext context, Factura factura)
+    {
+        if (!factura.EsAbono)
+        {
+            if (factura.FacturaOriginalId.HasValue)
+                throw new InvalidOperationException("Solo los abonos pueden rectificar otra factura.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(factura.MotivoRectificacion))
+            throw new InvalidOperationException("Indique el motivo de rectificación.");
+        if (factura.MotivoRectificacion.Length > 1000 || factura.NumeroFacturaOriginal?.Length > 50)
+            throw new InvalidOperationException("El motivo admite hasta 1000 caracteres y la referencia de factura hasta 50.");
+        if (factura.Lineas.Count == 0)
+            throw new InvalidOperationException("El abono debe tener al menos una línea.");
+        if (factura.TipoFactura == TipoFactura.Venta ? !factura.ClienteId.HasValue : !factura.ProveedorId.HasValue)
+            throw new InvalidOperationException("Seleccione el cliente o proveedor del abono.");
+
+        var terceroValido = factura.TipoFactura == TipoFactura.Venta
+            ? await context.Clientes.AnyAsync(c => c.Id == factura.ClienteId && c.EmpresaId == factura.EmpresaId)
+            : await context.Proveedores.AnyAsync(p => p.Id == factura.ProveedorId && p.EmpresaId == factura.EmpresaId);
+        if (!terceroValido)
+            throw new InvalidOperationException("El cliente o proveedor debe pertenecer a la empresa del abono.");
+
+        if (factura.FacturaOriginalId.HasValue)
+        {
+            var original = await context.Facturas.AsNoTracking().FirstOrDefaultAsync(f => f.Id == factura.FacturaOriginalId.Value);
+            if (original == null || original.EmpresaId != factura.EmpresaId || original.TipoFactura != factura.TipoFactura || original.EsAbono || original.Id == factura.Id)
+                throw new InvalidOperationException("La factura original debe ser del mismo tipo y empresa, y no puede ser otro abono.");
+            if (original.ClienteId != factura.ClienteId || original.ProveedorId != factura.ProveedorId)
+                throw new InvalidOperationException("El cliente o proveedor debe coincidir con el de la factura original.");
+            factura.NumeroFacturaOriginal = original.NumeroFactura;
+        }
+    }
+
+    public async Task<string> GenerarNumeroAsync(TipoFactura tipoFactura, ClaseFactura claseFactura = ClaseFactura.Original)
+    {
+        if (claseFactura == ClaseFactura.Rectificativa)
+            return await GenerarNumeroAbonoAsync(tipoFactura);
+
         using var context = await _contextFactory.CreateDbContextAsync();
         var empresaId = await _tenantService.GetEmpresaIdAsync();
         
@@ -307,6 +409,40 @@ public class FacturaService : IFacturaService
         {
             return $"{serie}-{numeroFormateado}";
         }
+    }
+
+    private async Task<string> GenerarNumeroAbonoAsync(TipoFactura tipoFactura)
+    {
+        var empresaId = await _tenantService.GetEmpresaIdAsync()
+            ?? throw new InvalidOperationException("No se puede generar un abono sin empresa asignada.");
+        using var context = await _contextFactory.CreateDbContextAsync();
+        await using var transaccion = await context.Database.BeginTransactionAsync();
+        var configuraciones = await context.ConfiguracionEmpresa
+            .FromSqlInterpolated($"SELECT * FROM ConfiguracionEmpresa WHERE EmpresaId = {empresaId} FOR UPDATE")
+            .ToListAsync();
+        var config = configuraciones.SingleOrDefault()
+            ?? throw new InvalidOperationException("No se encontró la configuración de la empresa.");
+        var esCompra = tipoFactura == TipoFactura.Compra;
+        var serie = esCompra ? config.SerieAbonoCompra : config.SerieAbonoVenta;
+        var actual = esCompra ? config.NumeroAbonoCompraActual : config.NumeroAbonoVentaActual;
+        var longitud = esCompra ? config.LongitudNumeroAbonoCompra : config.LongitudNumeroAbonoVenta;
+        var incluirAnio = esCompra ? config.IncluirAnioEnSerieAbonoCompra : config.IncluirAnioEnSerieAbonoVenta;
+        if (string.IsNullOrWhiteSpace(serie) || serie.Length > 10 || actual < 0 || longitud < 3 || longitud > 8)
+            throw new InvalidOperationException("Revise la serie y el contador de abonos en la configuración de la empresa.");
+        if (new[] { config.SerieFactura, config.SerieFacturaCompra, esCompra ? config.SerieAbonoVenta : config.SerieAbonoCompra }
+            .Contains(serie, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException("La serie del abono debe ser diferente de las otras series de facturas y abonos.");
+
+        var siguiente = checked(actual + 1);
+        if (esCompra) config.NumeroAbonoCompraActual = siguiente;
+        else config.NumeroAbonoVentaActual = siguiente;
+        var numero = siguiente.ToString($"D{longitud}");
+        var resultado = incluirAnio ? $"{serie}-{DateTime.Today.Year}-{numero}" : $"{serie}-{numero}";
+        if (await context.Facturas.AnyAsync(f => f.EmpresaId == empresaId && f.NumeroFactura == resultado))
+            throw new InvalidOperationException("El número de abono ya existe. Revise el contador en la configuración de la empresa.");
+        await context.SaveChangesAsync();
+        await transaccion.CommitAsync();
+        return resultado;
     }
 
     public async Task<Factura> CrearDesdePresupuestoAsync(int presupuestoId)

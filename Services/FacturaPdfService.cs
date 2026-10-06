@@ -8,6 +8,7 @@ namespace FactioX.Services;
 public interface IFacturaPdfService
 {
     byte[] GenerarFacturaPdf(Factura factura, Cliente cliente, ConfiguracionEmpresa? config, bool paraEmail = true);
+    byte[] GenerarFacturasPdf(IEnumerable<(Factura Factura, ConfiguracionEmpresa? Configuracion)> facturas);
 }
 
 public class FacturaPdfService : IFacturaPdfService
@@ -20,6 +21,25 @@ public class FacturaPdfService : IFacturaPdfService
     }
 
     public byte[] GenerarFacturaPdf(Factura factura, Cliente cliente, ConfiguracionEmpresa? config, bool paraEmail = true)
+    {
+        return CrearDocumentoFactura(factura, cliente, config, paraEmail).GeneratePdf();
+    }
+
+    public byte[] GenerarFacturasPdf(IEnumerable<(Factura Factura, ConfiguracionEmpresa? Configuracion)> facturas)
+    {
+        var documentos = facturas.Select(datos => CrearDocumentoFactura(
+            datos.Factura,
+            datos.Factura.Cliente ?? throw new InvalidOperationException($"La factura {datos.Factura.NumeroFactura} no tiene cliente asignado."),
+            datos.Configuracion,
+            paraEmail: false)).ToList();
+
+        if (documentos.Count == 0)
+            throw new InvalidOperationException("No hay facturas para imprimir.");
+
+        return Document.Merge(documentos).UseOriginalPageNumbers().GeneratePdf();
+    }
+
+    private Document CrearDocumentoFactura(Factura factura, Cliente cliente, ConfiguracionEmpresa? config, bool paraEmail)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -89,6 +109,8 @@ public class FacturaPdfService : IFacturaPdfService
                             col.Item().Background("#003366").Padding(2).Column(c =>
                             {
                                 var tituloFactura = factura.TipoFactura == TipoFactura.Compra ? "FACTURA COMPRA" : "FACTURA VENTA";
+                                if (factura.EsAbono)
+                                    tituloFactura = factura.TipoFactura == TipoFactura.Compra ? "ABONO COMPRA - RECTIFICATIVA" : "ABONO VENTA - RECTIFICATIVA";
                                 c.Item().AlignCenter().Text(tituloFactura).FontSize(fuenteGrande).Bold().FontColor(Colors.White);
                                 c.Item().AlignCenter().Text(factura.NumeroFactura).FontSize(fuenteBase).FontColor(Colors.White);
                             });
@@ -98,7 +120,7 @@ public class FacturaPdfService : IFacturaPdfService
                             // Cuadro de datos del cliente
                             col.Item().Background(Colors.Grey.Lighten3).Padding(paraEmail ? 2 : 5).Column(c =>
                             {
-                                c.Item().Text("CLIENTE").Bold().FontSize(fuenteBase).FontColor("#003366");
+                                c.Item().Text(factura.TipoFactura == TipoFactura.Compra ? "PROVEEDOR" : "CLIENTE").Bold().FontSize(fuenteBase).FontColor("#003366");
                                 
                                 if (cliente.Tipo == TipoCliente.Particular)
                                 {
@@ -160,6 +182,16 @@ public class FacturaPdfService : IFacturaPdfService
                 {
                     // Espaciado inicial en el contenido
                     column.Item().PaddingTop(paraEmail ? 5 : 10);
+
+                    if (factura.EsAbono)
+                    {
+                        column.Item().PaddingBottom(8).Column(rectificacion =>
+                        {
+                            if (!string.IsNullOrWhiteSpace(factura.NumeroFacturaOriginal))
+                                rectificacion.Item().Text($"Factura rectificada: {factura.NumeroFacturaOriginal}").FontSize(fuenteBase).Bold();
+                            rectificacion.Item().Text($"Motivo de rectificación: {factura.MotivoRectificacion}").FontSize(fuenteBase);
+                        });
+                    }
                     
                     // Concepto si existe
                     if (!string.IsNullOrEmpty(factura.Concepto))
@@ -231,17 +263,17 @@ public class FacturaPdfService : IFacturaPdfService
                         table.Cell().Padding(totalPadding).AlignRight().Text(factura.BaseImponible.ToString("C2")).FontSize(fuenteBase);
 
                         // Descuentos (si existen)
-                        if (factura.DescuentosGenerales > 0)
+                        if (factura.DescuentosGenerales != 0)
                         {
                             table.Cell().Padding(totalPadding).Text("Descuentos:").FontSize(fuenteBase).FontColor(Colors.Green.Medium);
-                            table.Cell().Padding(totalPadding).AlignRight().Text($"-{factura.DescuentosGenerales.ToString("C2")}").FontSize(fuenteBase).FontColor(Colors.Green.Medium);
+                            table.Cell().Padding(totalPadding).AlignRight().Text((-factura.DescuentosGenerales).ToString("C2")).FontSize(fuenteBase).FontColor(Colors.Green.Medium);
                         }
 
                         // Recargos (si existen)
-                        if (factura.RecargosGenerales > 0)
+                        if (factura.RecargosGenerales != 0)
                         {
                             table.Cell().Padding(totalPadding).Text("Recargos:").FontSize(fuenteBase).FontColor(Colors.Orange.Medium);
-                            table.Cell().Padding(totalPadding).AlignRight().Text($"+{factura.RecargosGenerales.ToString("C2")}").FontSize(fuenteBase).FontColor(Colors.Orange.Medium);
+                            table.Cell().Padding(totalPadding).AlignRight().Text(factura.RecargosGenerales.ToString("C2")).FontSize(fuenteBase).FontColor(Colors.Orange.Medium);
                         }
 
                         table.Cell().Padding(totalPadding).Text($"IVA ({factura.PorcentajeIVA}%):").Bold().FontSize(fuenteBase);
@@ -251,7 +283,7 @@ public class FacturaPdfService : IFacturaPdfService
                         if (factura.PorcentajeRetencion > 0)
                         {
                             table.Cell().Padding(totalPadding).Text($"Retención IRPF ({factura.PorcentajeRetencion}%):").Bold().FontColor(Colors.Red.Medium).FontSize(fuenteBase);
-                            table.Cell().Padding(totalPadding).AlignRight().Text($"-{factura.ImporteRetencion.ToString("C2")}").FontSize(fuenteBase).FontColor(Colors.Red.Medium);
+                            table.Cell().Padding(totalPadding).AlignRight().Text((-factura.ImporteRetencion).ToString("C2")).FontSize(fuenteBase).FontColor(Colors.Red.Medium);
                         }
 
                         table.Cell().Background("#003366").Padding(totalPadding).Text("TOTAL:").Bold().FontSize(fuenteMedia).FontColor(Colors.White);
@@ -326,6 +358,6 @@ public class FacturaPdfService : IFacturaPdfService
             });
         });
 
-        return documento.GeneratePdf();
+        return documento;
     }
 }

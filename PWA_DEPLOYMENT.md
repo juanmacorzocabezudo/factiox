@@ -268,7 +268,7 @@ self.addEventListener('install', (event) => {
 - [ ] Pruebas en dispositivos reales (Android, iOS, Desktop)
 - [ ] Lighthouse score > 90 en PWA
 - [ ] Modo offline funciona correctamente
-- [ ] Banner de instalación aparece correctamente
+- [ ] Sin avisos propios de instalación; instalación disponible desde el navegador
 - [ ] Documentación actualizada para usuarios
 
 ---

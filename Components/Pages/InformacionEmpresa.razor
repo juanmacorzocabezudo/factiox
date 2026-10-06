@@ -382,6 +382,60 @@
                     </div>
                 </div>
 
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="bi bi-receipt"></i> Numeración de Abonos de Venta</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>Próximo abono: <code>@GenerarEjemploAbono(false)</code></p>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="serieAbonoVenta" class="form-label">Serie</label>
+                                <input id="serieAbonoVenta" class="form-control" @bind="configuracion.SerieAbonoVenta" maxlength="10" required />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="numeroAbonoVenta" class="form-label">Último número utilizado</label>
+                                <input id="numeroAbonoVenta" type="number" class="form-control" @bind="configuracion.NumeroAbonoVentaActual" min="0" />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="longitudAbonoVenta" class="form-label">Longitud del número</label>
+                                <input id="longitudAbonoVenta" type="number" class="form-control" @bind="configuracion.LongitudNumeroAbonoVenta" min="3" max="8" />
+                            </div>
+                            <div class="col-12 form-check ms-2">
+                                <input id="anioAbonoVenta" type="checkbox" class="form-check-input" @bind="configuracion.IncluirAnioEnSerieAbonoVenta" />
+                                <label for="anioAbonoVenta" class="form-check-label">Incluir año en la serie</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-receipt-cutoff"></i> Numeración de Abonos de Compra</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>Próximo abono: <code>@GenerarEjemploAbono(true)</code></p>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="serieAbonoCompra" class="form-label">Serie</label>
+                                <input id="serieAbonoCompra" class="form-control" @bind="configuracion.SerieAbonoCompra" maxlength="10" required />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="numeroAbonoCompra" class="form-label">Último número utilizado</label>
+                                <input id="numeroAbonoCompra" type="number" class="form-control" @bind="configuracion.NumeroAbonoCompraActual" min="0" />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="longitudAbonoCompra" class="form-label">Longitud del número</label>
+                                <input id="longitudAbonoCompra" type="number" class="form-control" @bind="configuracion.LongitudNumeroAbonoCompra" min="3" max="8" />
+                            </div>
+                            <div class="col-12 form-check ms-2">
+                                <input id="anioAbonoCompra" type="checkbox" class="form-check-input" @bind="configuracion.IncluirAnioEnSerieAbonoCompra" />
+                                <label for="anioAbonoCompra" class="form-check-label">Incluir año en la serie</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Configuración general de facturación -->
                 <div class="card mb-4">
                     <div class="card-header bg-info text-white">
@@ -562,6 +616,15 @@
 
         try
         {
+            var series = new[] { configuracion.SerieFactura, configuracion.SerieFacturaCompra, configuracion.SerieAbonoVenta, configuracion.SerieAbonoCompra };
+            if (series.Any(serie => string.IsNullOrWhiteSpace(serie) || serie.Length > 10)
+                || series.Distinct(StringComparer.OrdinalIgnoreCase).Count() != series.Length)
+                throw new InvalidOperationException("Las series de facturas y abonos deben tener entre 1 y 10 caracteres y ser diferentes.");
+            if (configuracion.NumeroAbonoVentaActual < 0 || configuracion.NumeroAbonoCompraActual < 0
+                || configuracion.LongitudNumeroAbonoVenta < 3 || configuracion.LongitudNumeroAbonoVenta > 8
+                || configuracion.LongitudNumeroAbonoCompra < 3 || configuracion.LongitudNumeroAbonoCompra > 8)
+                throw new InvalidOperationException("Los contadores de abonos no pueden ser negativos y la longitud debe estar entre 3 y 8.");
+
             // Guardar logo si se ha seleccionado uno nuevo
             if (logoFile != null)
             {
@@ -623,6 +686,17 @@
         }
         
         return $"{configuracion.SerieFacturaCompra}-{numero}";
+    }
+
+    private string GenerarEjemploAbono(bool esCompra)
+    {
+        if (configuracion == null) return "";
+        var serie = esCompra ? configuracion.SerieAbonoCompra : configuracion.SerieAbonoVenta;
+        var actual = esCompra ? configuracion.NumeroAbonoCompraActual : configuracion.NumeroAbonoVentaActual;
+        var longitud = esCompra ? configuracion.LongitudNumeroAbonoCompra : configuracion.LongitudNumeroAbonoVenta;
+        var incluirAnio = esCompra ? configuracion.IncluirAnioEnSerieAbonoCompra : configuracion.IncluirAnioEnSerieAbonoVenta;
+        var numero = ((long)actual + 1).ToString($"D{Math.Clamp(longitud, 3, 8)}");
+        return incluirAnio ? $"{serie}-{DateTime.Today.Year}-{numero}" : $"{serie}-{numero}";
     }
 
     private string GenerarEjemploPresupuesto()

@@ -12,7 +12,7 @@ FactioX ahora puede instalarse como una aplicación nativa en cualquier disposit
 - ✅ **Accesos directos personalizados**
 - ✅ **Notificaciones push** (preparado para futuras funcionalidades)
 - ✅ **Sincronización en segundo plano**
-- ✅ **Banner de instalación personalizado**
+- ✅ **Instalación desde el navegador, sin avisos propios**
 
 ---
 
@@ -22,13 +22,9 @@ FactioX ahora puede instalarse como una aplicación nativa en cualquier disposit
 
 #### Android (Chrome/Edge):
 1. Abre FactioX en Chrome o Edge
-2. Aparecerá un banner en la parte inferior derecha: **"Instalar FactioX"**
-3. Haz clic en **"Instalar"**
-4. La app se instalará en tu dispositivo
-5. Accede desde el cajón de aplicaciones
-
-Alternativa:
-- Toca el menú (⋮) → **"Instalar aplicación"** o **"Agregar a pantalla de inicio"**
+2. Toca el menú (⋮) → **"Instalar aplicación"** o **"Agregar a pantalla de inicio"**
+3. Confirma la instalación en el diálogo del navegador
+4. Accede desde el cajón de aplicaciones
 
 #### iOS (Safari):
 1. Abre FactioX en Safari
@@ -66,7 +62,7 @@ wwwroot/
 ├── manifest.json              # Configuración PWA
 ├── service-worker.js          # Service Worker para caché y offline
 ├── js/
-│   └── pwa-install.js        # Lógica de instalación personalizada
+│   └── pwa-install.js        # Registro PWA sin promoción de instalación
 └── iconos PWA:
     ├── icon-192.png          # Icono 192x192px
     ├── icon-512.png          # Icono 512x512px
@@ -107,17 +103,11 @@ El Service Worker implementa:
 
 ---
 
-## 🎨 Personalización del Banner de Instalación
+## Instalación Sin Avisos
 
-El banner de instalación personalizado:
+FactioX no muestra banners, botones ni notificaciones de instalación. La instalación se inicia únicamente desde el menú o el icono del navegador compatible.
 
-- Aparece después de cargar la página
-- Se puede cerrar (no vuelve a aparecer en 24h)
-- Diseño responsive (se adapta a móviles)
-- Animación de entrada suave
-- Botón verde destacado
-
-Para personalizar el banner, edita: `wwwroot/js/pwa-install.js`
+El script `wwwroot/js/pwa-install.js` suprime la promoción automática del navegador sin modificar el manifiesto ni el registro del service worker.
 
 ---
 

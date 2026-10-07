@@ -1,5 +1,15 @@
 # 📦 Publicación para Producción - FactioX
 
+## Procedimiento Vigente
+
+Ejecutar `./publicar_iis.sh`. Reconstruye Release para Windows x64 desde cero y deja los archivos directamente en `publicado/`, sin ZIP, `web.config` ni `appsettings*.json`. La salida anterior se sustituye solo despues de completar la publicacion temporal y comprobar sus archivos necesarios.
+
+Con IIS detenido, copiar el contenido de `publicado/` sobre la aplicacion existente, manteniendo la configuracion y los archivos de usuarios del servidor. El SQL de abonos se incluye en `publicado/Database/AddAbonosCompraVenta.sql`; ejecutarlo en la base de destino si falta la actualizacion del esquema.
+
+**Las secciones siguientes son documentacion historica del despliegue inicial. No utilizar sus instrucciones de ZIP, `publish/` ni `empaquetar_produccion.sh` para las publicaciones actuales.**
+
+---
+
 **Fecha de publicación:** 10 de marzo de 2026  
 **Versión:** Release Build  
 **Tamaño:** ~95 MB  

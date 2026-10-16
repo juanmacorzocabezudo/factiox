@@ -12,9 +12,6 @@ public class Usuario
     
     public string Password { get; set; } = string.Empty;
     
-    // Campo para almacenar contraseña en texto plano (solo visible para SuperAdmin)
-    public string? PasswordTextoPlano { get; set; }
-    
     [Required(ErrorMessage = "El nombre completo es requerido")]
     [MaxLength(200, ErrorMessage = "El nombre completo no puede exceder los 200 caracteres")]
     public string NombreCompleto { get; set; } = string.Empty;

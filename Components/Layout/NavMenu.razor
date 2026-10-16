@@ -2,6 +2,7 @@
 @using FactioX.Models
 @inject IAuthService AuthService
 @inject IEmpresaService EmpresaService
+@inject IModuloService ModuloService
 @inject NavigationManager Navigation
 @implements IDisposable
 @rendermode InteractiveServer
@@ -134,6 +135,115 @@
     .factiox-logout-btn .bi {
         width: 0.9rem !important;
         height: 0.9rem !important;
+    }
+
+    .factiox-modulos-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        border-radius: 4px;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .factiox-modulos-btn:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .factiox-modulos-btn .bi {
+        margin: 0 !important;
+        width: auto !important;
+        height: auto !important;
+    }
+
+    .factiox-modulos .dropdown-menu {
+        right: 0;
+        left: auto;
+        min-width: 210px;
+        background-color: #1a3a1a;
+        border: none;
+        border-radius: 6px;
+        padding: 0.4rem 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 2000;
+    }
+
+    .factiox-modulos-titulo {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.25rem 1rem 0.4rem;
+    }
+
+    .factiox-modulos .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: white;
+        font-size: 0.85rem;
+        padding: 0.5rem 1rem;
+    }
+
+    .factiox-modulos .dropdown-item:hover {
+        background-color: rgba(76, 175, 80, 0.3);
+        color: white;
+    }
+
+    .factiox-modulos-candado {
+        opacity: 0.6;
+        font-size: 0.75rem;
+    }
+
+    /* Escritorio: todo en una sola línea; se compacta según el ancho disponible */
+    @@media (min-width: 993px) {
+        .factiox-navbar {
+            flex-wrap: nowrap;
+        }
+
+        .factiox-menu-items {
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
+
+        .factiox-user-section {
+            flex-shrink: 0;
+        }
+    }
+
+    @@media (min-width: 993px) and (max-width: 1400px) {
+        .factiox-navbar {
+            padding-left: 1rem;
+        }
+
+        .factiox-menu-items .nav-link {
+            padding: 0.45rem 0.55rem !important;
+            font-size: 0.82rem !important;
+        }
+
+        .logout-texto {
+            display: none;
+        }
+    }
+
+    @@media (min-width: 993px) and (max-width: 1200px) {
+        .factiox-menu-items .nav-link > .bi {
+            display: none !important;
+        }
+
+        .user-name-texto {
+            display: none;
+        }
+
+        .factiox-user-section {
+            padding-left: 0.6rem;
+            gap: 0.5rem;
+        }
     }
     
     /* Responsive Design para Móviles */
@@ -347,17 +457,23 @@
             
             @if (AuthService.Rol != Roles.Asesoria)
             {
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownModulos" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <span class="bi bi-grid-3x3-gap-fill"></span> Módulos disponibles
-                    </a>
-                    <ul class="dropdown-menu" data-bs-display="static" aria-labelledby="navbarDropdownModulos">
-                        <li><a class="dropdown-item" href="modulo-no-disponible/Contabilidad"><span class="bi bi-calculator-fill"></span> Contabilidad</a></li>
-                        <li><a class="dropdown-item" href="modulo-no-disponible/TPV"><span class="bi bi-shop"></span> TPV</a></li>
-                        <li><a class="dropdown-item" href="modulo-no-disponible/Almacén"><span class="bi bi-box-fill"></span> Almacén</a></li>
-                        <li><a class="dropdown-item" href="modulo-no-disponible/Producción"><span class="bi bi-gear-wide-connected"></span> Producción</a></li>
-                    </ul>
-                </li>
+                @if (tpvActivo)
+                {
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdownTpv" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="bi bi-shop"></span> TPV
+                        </a>
+                        <ul class="dropdown-menu" data-bs-display="static" aria-labelledby="navbarDropdownTpv">
+                            <li><a class="dropdown-item" href="tpv"><span class="bi bi-cart-fill"></span> Venta</a></li>
+                            <li><a class="dropdown-item" href="tpv/caja"><span class="bi bi-cash-coin"></span> Caja</a></li>
+                            <li><a class="dropdown-item" href="tpv/tickets"><span class="bi bi-receipt"></span> Tickets</a></li>
+                            @if (AuthService.Rol == Roles.Administrador)
+                            {
+                                <li><a class="dropdown-item" href="tpv/configuracion"><span class="bi bi-sliders"></span> Configuración TPV</a></li>
+                            }
+                        </ul>
+                    </li>
+                }
                 
                 <li class="nav-item">
                     <NavLink class="nav-link" href="configuracion">
@@ -368,14 +484,43 @@
         </ul>
         
         <div class="factiox-user-section">
+            @if (AuthService.EstaAutenticado && AuthService.Rol != Roles.Asesoria)
+            {
+                <div class="dropdown factiox-modulos">
+                    <button type="button" class="factiox-modulos-btn" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Módulos">
+                        <i class="bi bi-grid-3x3-gap-fill"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li class="factiox-modulos-titulo">Módulos</li>
+                        @foreach (var modulo in modulosMenu)
+                        {
+                            var activo = modulo.Nombre == "TPV" && tpvActivo;
+                            <li>
+                                <a class="dropdown-item" href="@(activo ? "tpv" : $"modulo-no-disponible/{modulo.Nombre}")">
+                                    <i class="bi @modulo.Icono"></i>
+                                    <span class="flex-grow-1">@modulo.Nombre</span>
+                                    @if (activo)
+                                    {
+                                        <span class="badge bg-success">Activo</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-lock-fill factiox-modulos-candado"></i>
+                                    }
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
             <a href="perfil" class="user-name text-decoration-none" style="cursor: pointer; transition: opacity 0.2s;" 
                onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'" title="Ver mi perfil">
                 <span class="bi bi-person-circle"></span>
-                @AuthService.UsuarioActual
+                <span class="user-name-texto">@AuthService.UsuarioActual</span>
             </a>
-            <button type="button" class="factiox-logout-btn" @onclick="CerrarSesionHandler">
+            <button type="button" class="factiox-logout-btn" @onclick="CerrarSesionHandler" title="Cerrar sesión">
                 <span class="bi bi-box-arrow-right"></span>
-                Cerrar sesión
+                <span class="logout-texto">Cerrar sesión</span>
             </button>
         </div>
     </div>
@@ -384,6 +529,37 @@
 @code {
     private string? empresaNombre;
     private bool collapseNavMenu = true;
+    private bool tpvActivo;
+
+    private static readonly (string Nombre, string Icono)[] modulosMenu =
+    {
+        ("TPV", "bi-shop"),
+        ("Contabilidad", "bi-calculator-fill"),
+        ("Almacén", "bi-box-fill"),
+        ("Producción", "bi-gear-wide-connected")
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await CargarModulosAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task CargarModulosAsync()
+    {
+        try
+        {
+            tpvActivo = AuthService.EstaAutenticado && AuthService.Rol is Roles.Administrador or Roles.Usuario
+                && await ModuloService.EstaActivoAsync(TipoModulo.TPV);
+        }
+        catch
+        {
+            tpvActivo = false;
+        }
+    }
 
     private void ToggleNavMenu()
     {
@@ -422,6 +598,8 @@
         InvokeAsync(async () =>
         {
             await CargarEmpresaAsync();
+            ModuloService.InvalidarCache();
+            await CargarModulosAsync();
             StateHasChanged();
         });
     }

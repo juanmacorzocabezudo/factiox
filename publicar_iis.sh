@@ -15,11 +15,13 @@ dotnet publish FactioX.csproj -c Release -r win-x64 --self-contained false \
     -o "$STAGING_DIR" '-clp:ErrorsOnly;Summary'
 
 find "$STAGING_DIR" -type f \( -iname 'web.config' -o -iname 'appsettings*.json' \) -delete
-rsync -aR tessdata Database/AddAbonosCompraVenta.sql ABONOS_README.md "$STAGING_DIR/"
+rsync -aR tessdata Database/AddAbonosCompraVenta.sql Database/AddModuloTPV.sql \
+    ABONOS_README.md TPV_README.md "$STAGING_DIR/"
 
 for required in FactioX.dll FactioX.deps.json FactioX.runtimeconfig.json \
     wwwroot/app.css wwwroot/js/pwa-install.js tessdata/spa.traineddata \
-    Database/AddAbonosCompraVenta.sql; do
+    Database/AddAbonosCompraVenta.sql Database/AddModuloTPV.sql \
+    ABONOS_README.md TPV_README.md; do
     if [[ ! -s "$STAGING_DIR/$required" ]]; then
         printf 'Falta un archivo necesario: %s\n' "$required" >&2
         exit 1

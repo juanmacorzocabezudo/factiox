@@ -37,9 +37,10 @@ public class PresupuestoService : IPresupuestoService
             .AsQueryable();
         
         // SuperAdmin ve todos, otros solo ven los de su empresa
-        if (!isSuperAdmin && empresaId.HasValue)
+        // Sin empresa en sesión (p. ej. durante el prerenderizado) no se devuelve nada
+        if (!isSuperAdmin)
         {
-            query = query.Where(p => p.EmpresaId == empresaId.Value);
+            query = query.Where(p => p.EmpresaId == empresaId);
         }
         
         return await query.OrderByDescending(p => p.Fecha).ToListAsync();

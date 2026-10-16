@@ -135,6 +135,11 @@ namespace FactioX.Services
                 {
                     await _sessionStorage.SetAsync("EmpresaId", usuarioDb.EmpresaId.Value);
                 }
+                else
+                {
+                    // Evita heredar la empresa de una sesión anterior en la misma pestaña
+                    await _sessionStorage.DeleteAsync("EmpresaId");
+                }
 
                 // Actualizar estado local
                 EstaAutenticado = true;

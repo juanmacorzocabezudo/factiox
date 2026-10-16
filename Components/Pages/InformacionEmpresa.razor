@@ -751,8 +751,8 @@
 
         try
         {
-            // Crear directorio para certificados si no existe
-            var rutaCertificados = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "certificados");
+            // Los certificados se guardan fuera de wwwroot para que no sean descargables
+            var rutaCertificados = Path.Combine(_webHostEnvironment.ContentRootPath, "App_Data", "certificados");
             if (!Directory.Exists(rutaCertificados))
             {
                 Directory.CreateDirectory(rutaCertificados);

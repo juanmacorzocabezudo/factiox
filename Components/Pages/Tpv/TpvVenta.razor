@@ -1,0 +1,889 @@
+@page "/tpv"
+@layout FactioX.Components.Layout.TpvLayout
+@using FactioX.Models
+@using FactioX.Services
+@inherits TpvPaginaBase
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+<PageTitle>TPV - FactioX</PageTitle>
+
+@if (!Cargado)
+{
+    <div class="d-flex justify-content-center p-5"><div class="spinner-border text-success"></div></div>
+}
+else if (ErrorCarga != null)
+{
+    <div class="alert alert-danger m-3">@ErrorCarga</div>
+}
+else if (!terminales.Any())
+{
+    <div class="alert alert-warning m-3">
+        <i class="bi bi-exclamation-triangle"></i> No hay terminales TPV configurados.
+        @if (TpvService.EsAdministrador)
+        {
+            <a href="tpv/configuracion" class="alert-link ms-2">Crear un terminal</a>
+        }
+        else
+        {
+            <span>Pida a un administrador que cree uno.</span>
+        }
+    </div>
+}
+else
+{
+    <div class="tpv">
+        <div class="tpv-barra d-flex flex-wrap align-items-center gap-2 mb-2">
+            <select class="form-select form-select-sm w-auto" value="@terminalId" @onchange="CambiarTerminal">
+                @foreach (var t in terminales)
+                {
+                    <option value="@t.Id">@t.Codigo - @t.Nombre</option>
+                }
+            </select>
+            @if (sesion != null)
+            {
+                <span class="badge bg-success"><i class="bi bi-unlock"></i> Caja abierta desde @sesion.FechaApertura.ToString("dd/MM HH:mm")</span>
+            }
+            else
+            {
+                <span class="badge bg-danger"><i class="bi bi-lock"></i> Caja cerrada</span>
+            }
+            <span class="ms-auto small text-muted d-none d-md-inline">F2 buscar · F4 cobrar · F8 aparcar · Esc cerrar</span>
+            <a href="tpv/caja" class="btn btn-sm btn-outline-secondary"><i class="bi bi-cash-coin"></i> Caja</a>
+            <a href="tpv/tickets" class="btn btn-sm btn-outline-secondary"><i class="bi bi-receipt"></i> Tickets</a>
+        </div>
+
+        @if (sesion == null)
+        {
+            <div class="card border-danger mb-2">
+                <div class="card-body d-flex flex-wrap align-items-end gap-2">
+                    <div>
+                        <label class="form-label mb-0 small">Fondo inicial de caja</label>
+                        <input type="number" step="0.01" min="0" class="form-control" @bind="fondoInicial" />
+                    </div>
+                    <button class="btn btn-success" @onclick="AbrirCaja"><i class="bi bi-unlock"></i> Abrir caja</button>
+                    <span class="text-muted small">Puede preparar tickets y aparcarlos, pero necesita abrir caja para cobrar.</span>
+                </div>
+            </div>
+        }
+
+        <div class="row g-2">
+            <div class="col-lg-7 order-2 order-lg-1">
+                <div class="card tpv-panel tpv-catalogo">
+                    <div class="tpv-catalogo-cabecera">
+                        <div class="tpv-buscador">
+                            <i class="bi bi-search"></i>
+                            <input id="tpv-busqueda" type="search" placeholder="Buscar por nombre, referencia o código"
+                                   @bind="busqueda" @bind:event="oninput" @bind:after="BuscarProductos" />
+                        </div>
+                        <span class="tpv-contador">@productos.Count @(productos.Count == 1 ? "artículo" : "artículos")</span>
+                    </div>
+
+                    <div class="tpv-categorias">
+                        <button class="tpv-categoria @(categoria == null ? "activa" : "")" @onclick="() => SeleccionarCategoria(null)">
+                            <i class="bi bi-grid"></i> Todas
+                        </button>
+                        @foreach (var c in categorias)
+                        {
+                            <button class="tpv-categoria @(categoria == c ? "activa" : "")" @onclick="() => SeleccionarCategoria(c)">@c</button>
+                        }
+                    </div>
+
+                    <div class="tpv-productos">
+                        @foreach (var p in productos)
+                        {
+                            var esServicio = p.Tipo == TipoProducto.Servicio;
+                            var sinStock = !esServicio && p.Stock.HasValue && p.Stock <= 0;
+                            var stockBajo = !esServicio && p.Stock.HasValue && p.Stock > 0 && p.Stock <= (p.StockMinimo ?? 0);
+                            <button class="tpv-producto @(sinStock ? "agotado" : "")" @onclick="() => AgregarProducto(p, 1)" title="@p.Nombre">
+                                <div class="tpv-producto-imagen">
+                                    @if (!string.IsNullOrEmpty(p.Imagen))
+                                    {
+                                        <img src="@p.Imagen" alt="" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi @(esServicio ? "bi-tools" : "bi-box-seam")"></i>
+                                    }
+                                    @if (esServicio)
+                                    {
+                                        <span class="tpv-etiqueta servicio">Servicio</span>
+                                    }
+                                    else if (p.Stock.HasValue)
+                                    {
+                                        <span class="tpv-etiqueta @(sinStock ? "agotado" : stockBajo ? "bajo" : "ok")">
+                                            @(sinStock ? "Agotado" : $"Stock {p.Stock}")
+                                        </span>
+                                    }
+                                </div>
+                                <div class="tpv-producto-info">
+                                    <div class="tpv-producto-nombre">@p.Nombre</div>
+                                    @if (!string.IsNullOrWhiteSpace(p.Referencia))
+                                    {
+                                        <div class="tpv-producto-ref">Ref. @p.Referencia</div>
+                                    }
+                                    <div class="tpv-producto-precio">@Pvp(p).ToString("C2")</div>
+                                </div>
+                            </button>
+                        }
+                        @if (!productos.Any())
+                        {
+                            <div class="tpv-vacio">
+                                <i class="bi bi-search"></i>
+                                <p>No hay productos que coincidan con la búsqueda.</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-5 order-1 order-lg-2">
+                <div class="card tpv-panel">
+                    <div class="card-body p-2 d-flex flex-column">
+                        <div class="input-group mb-2">
+                            <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                            <input id="tpv-codigo" class="form-control form-control-lg" placeholder="Código de barras (3*código para cantidad)" autocomplete="off"
+                                   @bind="codigo" @bind:event="oninput" @onkeydown="TeclaCodigo" />
+                        </div>
+                        @if (mensaje != null)
+                        {
+                            <div class="alert @(mensajeError ? "alert-danger" : "alert-success") py-1 px-2 mb-2 small">@mensaje</div>
+                        }
+
+                        <div class="d-flex gap-2 mb-2 align-items-center">
+                            <select class="form-select form-select-sm" value="@(ticket.ClienteId?.ToString() ?? "")" @onchange="CambiarCliente">
+                                <option value="">@NombreCliente(ClienteGenerico)</option>
+                                @foreach (var c in clientes)
+                                {
+                                    <option value="@c.Id">@NombreCliente(c) (@c.NIF)</option>
+                                }
+                            </select>
+                            @if (ticket.Id > 0)
+                            {
+                                <span class="badge bg-warning text-dark text-nowrap">Recuperado</span>
+                            }
+                            @if (ticket.PresupuestoOrigenId.HasValue)
+                            {
+                                <span class="badge bg-info text-dark text-nowrap">@ticket.Notas</span>
+                            }
+                        </div>
+
+                        <div class="tpv-lineas flex-grow-1">
+                            <table class="table table-sm align-middle mb-0">
+                                <tbody>
+                                    @for (var i = 0; i < ticket.Lineas.Count; i++)
+                                    {
+                                        var indice = i;
+                                        var linea = ticket.Lineas[indice];
+                                        <tr class="@(indice == lineaSeleccionada ? "table-success" : "")" @onclick="() => lineaSeleccionada = indice">
+                                            <td>
+                                                <div class="fw-semibold">@linea.Descripcion</div>
+                                                <small class="text-muted">
+                                                    @Pvp(linea).ToString("C2") · IVA @linea.IVA.ToString("0.##")%
+                                                    @if (linea.Descuento > 0)
+                                                    {
+                                                        <span class="text-danger"> · -@linea.Descuento.ToString("0.##")%</span>
+                                                    }
+                                                </small>
+                                            </td>
+                                            <td class="text-nowrap">
+                                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => CambiarCantidad(indice, -1)" @onclick:stopPropagation><i class="bi bi-dash"></i></button>
+                                                <span class="mx-1 fw-bold">@linea.Cantidad.ToString("0.##")</span>
+                                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => CambiarCantidad(indice, 1)" @onclick:stopPropagation><i class="bi bi-plus"></i></button>
+                                            </td>
+                                            <td class="text-end fw-bold text-nowrap">@ImporteLinea(linea).ToString("C2")</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarLinea(indice)" @onclick:stopPropagation><i class="bi bi-trash"></i></button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            @if (!ticket.Lineas.Any())
+                            {
+                                <p class="text-muted text-center p-4 mb-0"><i class="bi bi-cart fs-1 d-block"></i>Escanee o seleccione productos</p>
+                            }
+                        </div>
+
+                        @if (LineaActual != null)
+                        {
+                            <div class="row g-1 mt-2 small">
+                                <div class="col-4">
+                                    <label class="form-label mb-0">Cantidad</label>
+                                    <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" value="@LineaActual.Cantidad.ToString(System.Globalization.CultureInfo.InvariantCulture)" @onchange="CambiarCantidadExacta" />
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label mb-0">Dto. %</label>
+                                    <input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm" value="@LineaActual.Descuento.ToString(System.Globalization.CultureInfo.InvariantCulture)" @onchange="CambiarDescuentoLinea" />
+                                </div>
+                                <div class="col-4">
+                                    <label class="form-label mb-0">PVP</label>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" disabled="@(!TpvService.EsAdministrador)"
+                                           value="@Pvp(LineaActual).ToString(System.Globalization.CultureInfo.InvariantCulture)" @onchange="CambiarPrecioLinea" />
+                                </div>
+                            </div>
+                        }
+
+                        <div class="tpv-totales mt-2">
+                            <div class="d-flex justify-content-between small">
+                                <span>Base imponible</span><span>@ticket.BaseImponible.ToString("C2")</span>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span>IVA</span><span>@ticket.TotalIVA.ToString("C2")</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center small">
+                                <span>Dto. global %</span>
+                                <input type="number" step="0.01" min="0" max="100" class="form-control form-control-sm text-end tpv-dto-global"
+                                       value="@ticket.DescuentoGlobal.ToString(System.Globalization.CultureInfo.InvariantCulture)" @onchange="CambiarDescuentoGlobal" />
+                            </div>
+                            <div class="d-flex justify-content-between tpv-total">
+                                <span>TOTAL</span><span>@ticket.Total.ToString("C2")</span>
+                            </div>
+                        </div>
+
+                        <div class="tpv-acciones mt-2">
+                            <button class="btn btn-success btn-lg tpv-cobrar" disabled="@(!ticket.Lineas.Any() || sesion == null)" @onclick="AbrirCobro">
+                                <i class="bi bi-cash-stack"></i> Cobrar
+                            </button>
+                            <button class="btn btn-outline-warning" disabled="@(!ticket.Lineas.Any())" @onclick="Aparcar"><i class="bi bi-pause-circle"></i> Aparcar</button>
+                            <button class="btn btn-outline-secondary" @onclick="AbrirAparcados"><i class="bi bi-inboxes"></i> Aparcados</button>
+                            <button class="btn btn-outline-info" @onclick="AbrirPresupuestos"><i class="bi bi-file-earmark-text"></i> Presupuesto</button>
+                            <button class="btn btn-outline-danger" disabled="@(!ticket.Lineas.Any() && ticket.Id == 0)" @onclick="Vaciar"><i class="bi bi-x-circle"></i> Vaciar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (modal == ModalTpv.Cobro)
+{
+    <div class="modal fade show d-block" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-cash-stack"></i> Cobrar @ticket.Total.ToString("C2")</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Forma de pago</label>
+                            <div class="d-grid gap-1 mb-2">
+                                @foreach (var f in formasPago)
+                                {
+                                    <button class="btn @(formaSeleccionadaId == f.Id ? "btn-success" : "btn-outline-success")" @onclick="() => SeleccionarForma(f.Id)">@f.Nombre</button>
+                                }
+                            </div>
+                            <div class="input-group mb-2">
+                                <input id="tpv-importe" type="number" step="0.01" min="0" class="form-control form-control-lg" @bind="importeEntrada" />
+                                <button class="btn btn-primary" @onclick="AnadirPago">Añadir</button>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                <button class="btn btn-outline-primary" @onclick="PagoExacto">Exacto</button>
+                                @if (formaEfectivo != null)
+                                {
+                                    @foreach (var billete in new[] { 5m, 10m, 20m, 50m, 100m })
+                                    {
+                                        <button class="btn btn-outline-dark" @onclick="() => AnadirBillete(billete)">@billete.ToString("0") €</button>
+                                    }
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tbody>
+                                    @foreach (var pago in pagos)
+                                    {
+                                        <tr>
+                                            <td>@formasPago.FirstOrDefault(f => f.Id == pago.FormaPagoId)?.Nombre</td>
+                                            <td class="text-end">@pago.Importe.ToString("C2")</td>
+                                            <td class="text-end"><button class="btn btn-sm btn-link text-danger p-0" @onclick="() => pagos.Remove(pago)"><i class="bi bi-x-lg"></i></button></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div class="d-flex justify-content-between fs-5"><span>Total</span><strong>@ticket.Total.ToString("C2")</strong></div>
+                            <div class="d-flex justify-content-between fs-5"><span>Entregado</span><strong>@Entregado.ToString("C2")</strong></div>
+                            @if (Pendiente > 0)
+                            {
+                                <div class="d-flex justify-content-between fs-4 text-danger"><span>Pendiente</span><strong>@Pendiente.ToString("C2")</strong></div>
+                            }
+                            else
+                            {
+                                <div class="d-flex justify-content-between fs-3 text-success"><span>Cambio</span><strong>@Cambio.ToString("C2")</strong></div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CerrarModal">Cancelar</button>
+                    <button class="btn btn-success btn-lg" disabled="@(Pendiente > 0 || procesando)" @onclick="ConfirmarCobro">
+                        @if (procesando)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        <i class="bi bi-check-circle"></i> Confirmar cobro
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (modal == ModalTpv.Resultado && ultimoTicket != null)
+{
+    <div class="modal fade show d-block" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="bi bi-check-circle"></i> Ticket @ultimoTicket.Numero cobrado</h5>
+                </div>
+                <div class="modal-body text-center">
+                    <div class="fs-4">Total: <strong>@ultimoTicket.Total.ToString("C2")</strong></div>
+                    @if (ultimoTicket.Cambio > 0)
+                    {
+                        <div class="display-6 text-success my-2">Cambio: @ultimoTicket.Cambio.ToString("C2")</div>
+                    }
+                    @if (ultimoTicket.Factura != null)
+                    {
+                        <div class="alert alert-primary mt-3 mb-0">Factura emitida: <strong>@ultimoTicket.Factura.NumeroFactura</strong></div>
+                    }
+                    else
+                    {
+                        <div class="mt-3 text-start">
+                            <label class="form-label small">¿Necesita factura completa? Cliente con NIF:</label>
+                            <div class="input-group">
+                                <select class="form-select" @bind="clienteFacturaId">
+                                    <option value="0">Seleccione cliente...</option>
+                                    @foreach (var c in clientes.Where(c => !string.IsNullOrWhiteSpace(c.NIF)))
+                                    {
+                                        <option value="@c.Id">@NombreCliente(c) (@c.NIF)</option>
+                                    }
+                                </select>
+                                <button class="btn btn-outline-primary" disabled="@(clienteFacturaId == 0 || procesando)" @onclick="FacturarUltimo">Facturar</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline-secondary" @onclick="ImprimirUltimo"><i class="bi bi-printer"></i> Imprimir ticket</button>
+                    <button id="tpv-nueva-venta" class="btn btn-success" @onclick="CerrarModal"><i class="bi bi-cart-plus"></i> Nueva venta</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (modal == ModalTpv.Aparcados)
+{
+    <div class="modal fade show d-block" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-inboxes"></i> Tickets aparcados</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!aparcados.Any())
+                    {
+                        <p class="text-muted mb-0">No hay tickets aparcados en este terminal.</p>
+                    }
+                    <div class="list-group">
+                        @foreach (var a in aparcados)
+                        {
+                            <button class="list-group-item list-group-item-action d-flex justify-content-between" @onclick="() => Recuperar(a.Id)">
+                                <span>
+                                    @a.Fecha.ToString("dd/MM HH:mm") · @NombreCliente(a.Cliente)
+                                    <small class="d-block text-muted">@a.Usuario?.NombreCompleto @a.Notas</small>
+                                </span>
+                                <strong>@a.Total.ToString("C2")</strong>
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@if (modal == ModalTpv.Presupuestos)
+{
+    <div class="modal fade show d-block" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-file-earmark-text"></i> Cargar presupuesto</h5>
+                    <button type="button" class="btn-close" @onclick="CerrarModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!presupuestos.Any())
+                    {
+                        <p class="text-muted mb-0">No hay presupuestos aceptados o enviados pendientes de cobro.</p>
+                    }
+                    <div class="list-group">
+                        @foreach (var p in presupuestos)
+                        {
+                            <button class="list-group-item list-group-item-action d-flex justify-content-between" @onclick="() => CargarPresupuesto(p)">
+                                <span>
+                                    <strong>@p.Numero</strong> · @NombreCliente(p.Cliente)
+                                    <small class="d-block text-muted">@p.Fecha.ToString("dd/MM/yyyy") · @p.Lineas.Count líneas</small>
+                                </span>
+                                <span>
+                                    <span class="badge @(p.Estado == EstadoPresupuesto.Aceptado ? "bg-success" : "bg-primary")">@p.Estado</span>
+                                    <strong class="ms-2">@p.Total.ToString("C2")</strong>
+                                    <small class="d-block text-muted text-end">sin IVA</small>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    private enum ModalTpv { Ninguno, Cobro, Resultado, Aparcados, Presupuestos }
+
+    [SupplyParameterFromQuery(Name = "presupuesto")]
+    public int? PresupuestoId { get; set; }
+
+    private List<TpvTerminal> terminales = new();
+    private int terminalId;
+    private TpvTerminal? Terminal => terminales.FirstOrDefault(t => t.Id == terminalId);
+    private TpvSesionCaja? sesion;
+    private decimal fondoInicial;
+    private List<string> categorias = new();
+    private string? categoria;
+    private string busqueda = "";
+    private List<Producto> productos = new();
+    private List<Cliente> clientes = new();
+    private List<FormaPagoPersonalizada> formasPago = new();
+    private FormaPagoPersonalizada? formaEfectivo;
+    private bool preciosIncluyenIVA = true;
+
+    private TicketTpv ticket = new();
+    private int lineaSeleccionada = -1;
+    private LineaDocumento? LineaActual => lineaSeleccionada >= 0 && lineaSeleccionada < ticket.Lineas.Count ? ticket.Lineas[lineaSeleccionada] : null;
+    private string codigo = "";
+    private string? mensaje;
+    private bool mensajeError;
+
+    private ModalTpv modal = ModalTpv.Ninguno;
+    private List<PagoEntradaTpv> pagos = new();
+    private int formaSeleccionadaId;
+    private decimal importeEntrada;
+    private bool procesando;
+    private TicketTpv? ultimoTicket;
+    private int clienteFacturaId;
+    private List<TicketTpv> aparcados = new();
+    private List<Presupuesto> presupuestos = new();
+    private DotNetObjectReference<TpvVenta>? referencia;
+
+    private Cliente? ClienteGenerico => clientes.FirstOrDefault(c => c.Id == Terminal?.ClienteGenericoId);
+    private decimal Entregado => pagos.Sum(p => p.Importe);
+    private decimal Pendiente => Math.Max(0, ticket.Total - Entregado);
+    private decimal Cambio => Math.Max(0, Entregado - ticket.Total);
+
+    protected override async Task CargarAsync()
+    {
+        terminales = await TpvService.ObtenerTerminalesAsync();
+        if (!terminales.Any()) return;
+
+        var guardado = await LeerTerminalGuardadoAsync();
+        terminalId = terminales.Any(t => t.Id == guardado) ? guardado!.Value : terminales[0].Id;
+        clientes = await TpvService.ObtenerClientesAsync();
+        formasPago = await TpvService.ObtenerFormasPagoAsync();
+        preciosIncluyenIVA = (await TpvService.ObtenerConfiguracionAsync()).TpvPreciosIncluyenIVA;
+        formaEfectivo = formasPago.FirstOrDefault(f => f.Nombre.Contains("efectivo", StringComparison.OrdinalIgnoreCase));
+        categorias = await TpvService.ObtenerCategoriasAsync();
+        await BuscarProductos();
+        await PrepararTerminalAsync();
+
+        if (PresupuestoId.HasValue)
+        {
+            await EjecutarAsync(async () =>
+            {
+                ticket = await TpvService.CrearTicketDesdePresupuestoAsync(PresupuestoId.Value, terminalId);
+            });
+        }
+    }
+
+    protected override async Task DespuesDeCargarAsync()
+    {
+        if (!terminales.Any()) return;
+        referencia = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("tpv.registrarAtajos", referencia);
+        await EnfocarCodigo();
+    }
+
+    private async Task PrepararTerminalAsync()
+    {
+        sesion = await TpvService.ObtenerSesionAbiertaAsync(terminalId);
+        NuevoTicket();
+    }
+
+    private void NuevoTicket()
+    {
+        ticket = new TicketTpv { TerminalId = terminalId };
+        lineaSeleccionada = -1;
+    }
+
+    private async Task CambiarTerminal(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var id)) return;
+        if (ticket.Lineas.Any() && !await JS.InvokeAsync<bool>("confirm", "Se descartará el ticket actual. ¿Continuar?"))
+            return;
+        terminalId = id;
+        await GuardarTerminalAsync(id);
+        await PrepararTerminalAsync();
+    }
+
+    private async Task AbrirCaja()
+    {
+        if (await EjecutarAsync(async () => sesion = await TpvService.AbrirCajaAsync(terminalId, fondoInicial)))
+        {
+            Mostrar("Caja abierta.");
+            await EnfocarCodigo();
+        }
+    }
+
+    private async Task BuscarProductos()
+    {
+        productos = await TpvService.BuscarProductosAsync(busqueda, categoria);
+    }
+
+    private async Task SeleccionarCategoria(string? valor)
+    {
+        categoria = valor;
+        await BuscarProductos();
+    }
+
+    private async Task TeclaCodigo(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        var texto = codigo.Trim();
+        codigo = "";
+        if (texto.Length == 0) return;
+
+        decimal cantidad = 1;
+        var asterisco = texto.IndexOf('*');
+        if (asterisco > 0 && decimal.TryParse(texto[..asterisco].Replace(',', '.'), System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out var c) && c > 0)
+        {
+            cantidad = c;
+            texto = texto[(asterisco + 1)..].Trim();
+        }
+
+        var producto = await TpvService.BuscarProductoPorCodigoAsync(texto);
+        if (producto == null)
+        {
+            Mostrar($"No se encontró el código {texto}.", error: true);
+            return;
+        }
+        AgregarProducto(producto, cantidad);
+    }
+
+    private void AgregarProducto(Producto producto, decimal cantidad)
+    {
+        var existente = ticket.Lineas.FindIndex(l => l.ProductoId == producto.Id && l.PrecioUnitario == producto.PrecioUnitario
+            && l.Descuento == (producto.Descuento ?? 0));
+        if (existente >= 0)
+        {
+            ticket.Lineas[existente].Cantidad += cantidad;
+            lineaSeleccionada = existente;
+        }
+        else
+        {
+            ticket.Lineas.Add(new LineaDocumento
+            {
+                ProductoId = producto.Id,
+                Producto = producto,
+                Descripcion = producto.Nombre,
+                Cantidad = cantidad,
+                PrecioUnitario = producto.PrecioUnitario,
+                IVA = producto.IVA,
+                Descuento = producto.Descuento ?? 0
+            });
+            lineaSeleccionada = ticket.Lineas.Count - 1;
+        }
+        ticket.CalcularTotales();
+        Mostrar($"{cantidad:0.##} × {producto.Nombre}");
+    }
+
+    private void CambiarCantidad(int indice, decimal delta)
+    {
+        var linea = ticket.Lineas[indice];
+        linea.Cantidad += delta;
+        if (linea.Cantidad <= 0)
+        {
+            EliminarLinea(indice);
+            return;
+        }
+        lineaSeleccionada = indice;
+        ticket.CalcularTotales();
+    }
+
+    private void EliminarLinea(int indice)
+    {
+        ticket.Lineas.RemoveAt(indice);
+        lineaSeleccionada = Math.Min(lineaSeleccionada, ticket.Lineas.Count - 1);
+        ticket.CalcularTotales();
+    }
+
+    private static decimal? LeerDecimal(ChangeEventArgs e) =>
+        decimal.TryParse(e.Value?.ToString()?.Replace(',', '.'), System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out var valor) ? valor : null;
+
+    private void CambiarCantidadExacta(ChangeEventArgs e)
+    {
+        if (LineaActual == null || LeerDecimal(e) is not { } valor || valor <= 0) return;
+        LineaActual.Cantidad = Math.Round(valor, 2);
+        ticket.CalcularTotales();
+    }
+
+    private void CambiarDescuentoLinea(ChangeEventArgs e)
+    {
+        if (LineaActual == null || LeerDecimal(e) is not { } valor) return;
+        LineaActual.Descuento = Math.Clamp(Math.Round(valor, 2), 0, 100);
+        ticket.CalcularTotales();
+    }
+
+    private void CambiarPrecioLinea(ChangeEventArgs e)
+    {
+        if (LineaActual == null || !TpvService.EsAdministrador || LeerDecimal(e) is not { } pvp || pvp < 0) return;
+        LineaActual.PrecioUnitario = preciosIncluyenIVA
+            ? Math.Round(pvp / (1 + LineaActual.IVA / 100m), 2, MidpointRounding.AwayFromZero)
+            : Math.Round(pvp, 2, MidpointRounding.AwayFromZero);
+        ticket.CalcularTotales();
+    }
+
+    private decimal Pvp(Producto producto) => MostrarPrecio(producto.PrecioUnitario, producto.IVA);
+
+    private decimal Pvp(LineaDocumento linea) => MostrarPrecio(linea.PrecioUnitario, linea.IVA);
+
+    private decimal MostrarPrecio(decimal precio, decimal iva) => Math.Round(
+        preciosIncluyenIVA ? precio * (1 + iva / 100m) : precio,
+        2,
+        MidpointRounding.AwayFromZero);
+
+    private void CambiarDescuentoGlobal(ChangeEventArgs e)
+    {
+        if (LeerDecimal(e) is not { } valor) return;
+        ticket.DescuentoGlobal = Math.Clamp(Math.Round(valor, 2), 0, 100);
+        ticket.CalcularTotales();
+    }
+
+    private void CambiarCliente(ChangeEventArgs e)
+    {
+        ticket.ClienteId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        ticket.Cliente = clientes.FirstOrDefault(c => c.Id == ticket.ClienteId);
+    }
+
+    private async Task AbrirCobro()
+    {
+        if (!ticket.Lineas.Any() || sesion == null) return;
+        ticket.CalcularTotales();
+        pagos = new();
+        formaSeleccionadaId = Terminal?.FormaPagoPorDefectoId ?? formaEfectivo?.Id ?? formasPago.FirstOrDefault()?.Id ?? 0;
+        importeEntrada = ticket.Total;
+        modal = ModalTpv.Cobro;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("tpv.enfocar", "tpv-importe");
+    }
+
+    private void SeleccionarForma(int id)
+    {
+        formaSeleccionadaId = id;
+        importeEntrada = Pendiente;
+    }
+
+    private void AnadirPago()
+    {
+        if (formaSeleccionadaId == 0 || importeEntrada <= 0) return;
+        pagos.Add(new PagoEntradaTpv { FormaPagoId = formaSeleccionadaId, Importe = Math.Round(importeEntrada, 2) });
+        importeEntrada = Pendiente;
+    }
+
+    private void PagoExacto()
+    {
+        if (Pendiente <= 0 || formaSeleccionadaId == 0) return;
+        pagos.Add(new PagoEntradaTpv { FormaPagoId = formaSeleccionadaId, Importe = Pendiente });
+        importeEntrada = 0;
+    }
+
+    private void AnadirBillete(decimal importe)
+    {
+        if (formaEfectivo == null) return;
+        pagos.Add(new PagoEntradaTpv { FormaPagoId = formaEfectivo.Id, Importe = importe });
+        importeEntrada = Pendiente;
+    }
+
+    private async Task ConfirmarCobro()
+    {
+        if (procesando) return;
+        if (!pagos.Any() && importeEntrada > 0) AnadirPago();
+        procesando = true;
+        var ok = await EjecutarAsync(async () =>
+        {
+            ultimoTicket = await TpvService.CobrarAsync(ticket, pagos);
+        });
+        procesando = false;
+        if (!ok) return;
+
+        clienteFacturaId = ultimoTicket!.ClienteId.HasValue && ultimoTicket.ClienteId != Terminal?.ClienteGenericoId ? ultimoTicket.ClienteId.Value : 0;
+        NuevoTicket();
+        modal = ModalTpv.Resultado;
+        await BuscarProductos();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("tpv.enfocar", "tpv-nueva-venta");
+    }
+
+    private async Task ImprimirUltimo()
+    {
+        if (ultimoTicket == null) return;
+        await EjecutarAsync(() => ImprimirTicketAsync(ultimoTicket.Id, Terminal?.ImpresoraAnchoMm ?? 80));
+    }
+
+    private async Task FacturarUltimo()
+    {
+        if (ultimoTicket == null || clienteFacturaId == 0) return;
+        procesando = true;
+        var ok = await EjecutarAsync(async () => await TpvService.ConvertirTicketEnFacturaAsync(ultimoTicket.Id, clienteFacturaId));
+        procesando = false;
+        if (ok) ultimoTicket = await TpvService.ObtenerTicketAsync(ultimoTicket.Id);
+    }
+
+    private async Task Aparcar()
+    {
+        if (!ticket.Lineas.Any()) return;
+        if (await EjecutarAsync(() => TpvService.AparcarAsync(ticket)))
+        {
+            NuevoTicket();
+            Mostrar("Ticket aparcado.");
+            await EnfocarCodigo();
+        }
+    }
+
+    private async Task AbrirAparcados()
+    {
+        aparcados = await TpvService.ObtenerAparcadosAsync(terminalId);
+        modal = ModalTpv.Aparcados;
+    }
+
+    private async Task Recuperar(int id)
+    {
+        if (ticket.Lineas.Any())
+        {
+            await JS.InvokeVoidAsync("alert", "Aparque o vacíe el ticket actual antes de recuperar otro.");
+            return;
+        }
+        var recuperado = await TpvService.ObtenerTicketAsync(id);
+        if (recuperado == null || !recuperado.Editable) return;
+        recuperado.TerminalId = terminalId;
+        ticket = recuperado;
+        ticket.CalcularTotales();
+        lineaSeleccionada = -1;
+        await CerrarModal();
+    }
+
+    private async Task AbrirPresupuestos()
+    {
+        if (await EjecutarAsync(async () => presupuestos = await TpvService.ObtenerPresupuestosCobrablesAsync()))
+            modal = ModalTpv.Presupuestos;
+    }
+
+    private async Task CargarPresupuesto(Presupuesto presupuesto)
+    {
+        if (ticket.Lineas.Any())
+        {
+            await JS.InvokeVoidAsync("alert", "Aparque o vacíe el ticket actual antes de cargar un presupuesto.");
+            return;
+        }
+        if (presupuesto.Estado == EstadoPresupuesto.Enviado
+            && !await JS.InvokeAsync<bool>("confirm", "El presupuesto aún no está aceptado. ¿Cargarlo igualmente?"))
+            return;
+        if (await EjecutarAsync(async () => ticket = await TpvService.CrearTicketDesdePresupuestoAsync(presupuesto.Id, terminalId)))
+            await CerrarModal();
+    }
+
+    private async Task Vaciar()
+    {
+        if (ticket.Id > 0)
+        {
+            if (!await JS.InvokeAsync<bool>("confirm", "¿Anular el ticket aparcado recuperado?")) return;
+            if (!await EjecutarAsync(() => TpvService.AnularAsync(ticket.Id))) return;
+        }
+        else if (ticket.Lineas.Count > 1 && !await JS.InvokeAsync<bool>("confirm", "¿Vaciar el ticket actual?"))
+        {
+            return;
+        }
+        NuevoTicket();
+        await EnfocarCodigo();
+    }
+
+    private async Task CerrarModal()
+    {
+        modal = ModalTpv.Ninguno;
+        StateHasChanged();
+        await EnfocarCodigo();
+    }
+
+    private void Mostrar(string texto, bool error = false)
+    {
+        mensaje = texto;
+        mensajeError = error;
+    }
+
+    private async Task EnfocarCodigo()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("tpv.enfocar", "tpv-codigo");
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    [JSInvokable]
+    public async Task Atajo(string tecla)
+    {
+        switch (tecla)
+        {
+            case "F2" when modal == ModalTpv.Ninguno:
+                await JS.InvokeVoidAsync("tpv.enfocar", "tpv-busqueda");
+                break;
+            case "F4" when modal == ModalTpv.Ninguno:
+                await AbrirCobro();
+                break;
+            case "F8" when modal == ModalTpv.Ninguno:
+                await Aparcar();
+                break;
+            case "Escape" when modal != ModalTpv.Cobro || !procesando:
+                await CerrarModal();
+                break;
+        }
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Durante el prerenderizado no hay JS ni atajos registrados
+        if (referencia == null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("tpv.desregistrarAtajos");
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        referencia?.Dispose();
+    }
+}

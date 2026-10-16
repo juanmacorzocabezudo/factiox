@@ -67,6 +67,20 @@ public class ConfiguracionEmpresa
     public int NumeroPresupuestoActual { get; set; } = 1;
     public int LongitudNumeroPresupuesto { get; set; } = 4;
     
+    // Módulo TPV: tickets (facturas simplificadas) y devoluciones
+    public string SerieTicket { get; set; } = "T";
+    public int NumeroTicketActual { get; set; } = 0;
+    public int LongitudNumeroTicket { get; set; } = 6;
+    public bool IncluirAnioEnSerieTicket { get; set; } = true;
+    public string SerieDevolucionTicket { get; set; } = "TD";
+    public int NumeroDevolucionTicketActual { get; set; } = 0;
+    public int LongitudNumeroDevolucionTicket { get; set; } = 6;
+    public bool IncluirAnioEnSerieDevolucionTicket { get; set; } = true;
+    public bool TpvDescontarStock { get; set; } = true;
+    public bool TpvPermitirStockNegativo { get; set; } = false;
+    public bool TpvPreciosIncluyenIVA { get; set; } = true;
+    public string? TpvTextoPieTicket { get; set; }
+
     // Configuración general de facturación
     public decimal IVAPorDefecto { get; set; } = 21m;
     public int DiasVencimientoPorDefecto { get; set; } = 30;

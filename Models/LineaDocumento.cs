@@ -13,7 +13,10 @@ public class LineaDocumento
     // Relación con Presupuesto
     public int? PresupuestoId { get; set; }
     public Presupuesto? Presupuesto { get; set; }
-    
+
+    public int? TicketTpvId { get; set; }
+    public TicketTpv? TicketTpv { get; set; }
+
     // Relación con Producto
     public int? ProductoId { get; set; }
     public Producto? Producto { get; set; }

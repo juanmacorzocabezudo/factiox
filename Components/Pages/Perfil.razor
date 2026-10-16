@@ -202,9 +202,11 @@
 
     private async Task CargarDatosUsuario()
     {
-        // Obtener el usuario actual del AuthService
-        var usuarios = await UsuarioService.ObtenerTodosAsync();
-        usuarioActual = usuarios.FirstOrDefault(u => u.Username == AuthService.UsuarioActual);
+        if (!AuthService.UsuarioId.HasValue)
+            await AuthService.InicializarAsync();
+        usuarioActual = AuthService.UsuarioId.HasValue
+            ? await UsuarioService.ObtenerPorIdAsync(AuthService.UsuarioId.Value)
+            : null;
 
         if (usuarioActual != null && usuarioActual.EmpresaId.HasValue)
         {

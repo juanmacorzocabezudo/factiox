@@ -7,6 +7,7 @@
 @inject IConfiguracionEmpresaService ConfiguracionEmpresaService
 @inject IPresupuestoPdfService PresupuestoPdfService
 @inject IEmailService EmailService
+@inject IModuloService ModuloService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
@@ -103,6 +104,12 @@
                                         <button class="btn btn-sm btn-success me-1" @onclick="() => EnviarPorEmailPresupuesto(presupuesto.Id)" title="Enviar por Email">
                                             <i class="bi bi-envelope-fill"></i>
                                         </button>
+                                        @if (tpvActivo && presupuesto.Estado is EstadoPresupuesto.Aceptado or EstadoPresupuesto.Enviado)
+                                        {
+                                            <a class="btn btn-sm btn-outline-success me-1" href="tpv?presupuesto=@presupuesto.Id" title="Cobrar en TPV">
+                                                <i class="bi bi-shop"></i>
+                                            </a>
+                                        }
                                         <button class="btn btn-sm" style="color: #155724; border-color: #155724;" @onclick="() => EliminarPresupuesto(presupuesto.Id)" title="Eliminar">
                                             <i class="bi bi-trash-fill"></i>
                                         </button>
@@ -367,6 +374,7 @@
     private DateTime? filtroFechaDesde;
     private DateTime? filtroFechaHasta;
     private bool mostrarModal = false;
+    private bool tpvActivo;
     private Presupuesto presupuestoEditando = new Presupuesto { Lineas = new List<LineaDocumento>() };
 
     private IEnumerable<Presupuesto> PresupuestosFiltrados
@@ -408,6 +416,7 @@
         await CargarPresupuestos();
         clientes = await ClienteService.ObtenerTodosAsync();
         productos = await ProductoService.ObtenerActivosAsync();
+        tpvActivo = await ModuloService.EstaActivoAsync(TipoModulo.TPV);
     }
 
     private async Task CargarPresupuestos()

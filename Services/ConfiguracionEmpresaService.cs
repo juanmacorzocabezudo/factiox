@@ -11,21 +11,22 @@ public interface IConfiguracionEmpresaService
     Task<ConfiguracionEmpresa> ActualizarConfiguracionAsync(ConfiguracionEmpresa configuracion);
     Task<ConfiguracionEmpresa> CrearAsync(ConfiguracionEmpresa configuracion);
     Task ActualizarAsync(ConfiguracionEmpresa configuracion);
-    Task<string> GenerarNumeroFacturaAsync();
-    Task<string> GenerarNumeroPresupuestoAsync();
 }
 
 public class ConfiguracionEmpresaService : IConfiguracionEmpresaService
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly ITenantService _tenantService;
+    private readonly ISecretosService _secretos;
 
     public ConfiguracionEmpresaService(
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
-        ITenantService tenantService)
+        ITenantService tenantService,
+        ISecretosService secretos)
     {
         _dbContextFactory = dbContextFactory;
         _tenantService = tenantService;
+        _secretos = secretos;
     }
 
     public async Task<ConfiguracionEmpresa?> ObtenerConfiguracionAsync()
@@ -44,24 +45,44 @@ public class ConfiguracionEmpresaService : IConfiguracionEmpresaService
             return null;
         }
         
-        return await context.ConfiguracionEmpresa
+        var config = await context.ConfiguracionEmpresa
             .FirstOrDefaultAsync(c => c.EmpresaId == empresaId.Value);
+        if (config != null)
+            config.CertificadoPassword = _secretos.Desproteger(config.CertificadoPassword);
+        return config;
     }
 
     public async Task<ConfiguracionEmpresa?> ObtenerPorEmpresaIdAsync(int empresaId)
     {
         using var context = await _dbContextFactory.CreateDbContextAsync();
         
-        return await context.ConfiguracionEmpresa
+        var config = await context.ConfiguracionEmpresa
             .FirstOrDefaultAsync(c => c.EmpresaId == empresaId);
+        if (config != null)
+        {
+            // La contraseña del certificado solo se entrega a la propia empresa
+            config.CertificadoPassword = empresaId == await _tenantService.GetEmpresaIdAsync()
+                ? _secretos.Desproteger(config.CertificadoPassword)
+                : null;
+        }
+        return config;
     }
 
     public async Task<ConfiguracionEmpresa> CrearAsync(ConfiguracionEmpresa configuracion)
     {
         using var context = await _dbContextFactory.CreateDbContextAsync();
         
+        var passwordPlano = configuracion.CertificadoPassword;
+        configuracion.CertificadoPassword = _secretos.Proteger(passwordPlano);
         context.ConfiguracionEmpresa.Add(configuracion);
-        await context.SaveChangesAsync();
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        finally
+        {
+            configuracion.CertificadoPassword = passwordPlano;
+        }
         
         return configuracion;
     }
@@ -70,50 +91,25 @@ public class ConfiguracionEmpresaService : IConfiguracionEmpresaService
     {
         using var context = await _dbContextFactory.CreateDbContextAsync();
         
+        var passwordPlano = configuracion.CertificadoPassword;
+        configuracion.CertificadoPassword = _secretos.Proteger(passwordPlano);
         context.ConfiguracionEmpresa.Update(configuracion);
-        await context.SaveChangesAsync();
+        // Los contadores TPV solo los modifica TpvService dentro de su transacción
+        context.Entry(configuracion).Property(c => c.NumeroTicketActual).IsModified = false;
+        context.Entry(configuracion).Property(c => c.NumeroDevolucionTicketActual).IsModified = false;
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        finally
+        {
+            configuracion.CertificadoPassword = passwordPlano;
+        }
     }
 
     public async Task<ConfiguracionEmpresa> ActualizarConfiguracionAsync(ConfiguracionEmpresa configuracion)
     {
         await ActualizarAsync(configuracion);
         return configuracion;
-    }
-
-    public async Task<string> GenerarNumeroFacturaAsync()
-    {
-        var configuracion = await ObtenerConfiguracionAsync();
-        if (configuracion == null)
-        {
-            return "FAC-2026-0001";
-        }
-        
-        var año = configuracion.IncluirAñoEnSerie ? DateTime.Now.Year.ToString() : "";
-        var numero = configuracion.NumeroFacturaActual.ToString().PadLeft(configuracion.LongitudNumeroFactura, '0');
-        var numeroFactura = configuracion.IncluirAñoEnSerie 
-            ? $"{configuracion.SerieFactura}-{año}-{numero}"
-            : $"{configuracion.SerieFactura}-{numero}";
-        
-        configuracion.NumeroFacturaActual++;
-        await ActualizarAsync(configuracion);
-        
-        return numeroFactura;
-    }
-
-    public async Task<string> GenerarNumeroPresupuestoAsync()
-    {
-        var configuracion = await ObtenerConfiguracionAsync();
-        if (configuracion == null)
-        {
-            return "PRES-2026-0001";
-        }
-        
-        var número = configuracion.NumeroPresupuestoActual.ToString().PadLeft(configuracion.LongitudNumeroPresupuesto, '0');
-        var numeroPresupuesto = $"{configuracion.SeriePresupuesto}-{DateTime.Now.Year}-{número}";
-        
-        configuracion.NumeroPresupuestoActual++;
-        await ActualizarAsync(configuracion);
-        
-        return numeroPresupuesto;
     }
 }

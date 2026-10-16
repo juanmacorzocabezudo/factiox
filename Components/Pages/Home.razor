@@ -537,7 +537,7 @@
                 }
 
                 // Cargar todos los clientes de las empresas asociadas
-                var todosLosClientes = await ClienteService.ObtenerTodosAsync();
+                var todosLosClientes = await ClienteService.ObtenerPorEmpresasAsync(AuthService.EmpresaIds ?? new List<int>());
                 if (AuthService.EmpresaIds != null)
                 {
                     clientesAsesoria = todosLosClientes

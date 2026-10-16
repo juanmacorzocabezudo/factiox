@@ -59,6 +59,8 @@ ScaffoldingReadMe.txt
 
 # Certificados electrónicos (contienen información sensible)
 wwwroot/certificados/
+# Certificados y claves de Data Protection
+App_Data/
 *.pfx
 *.p12
 
@@ -68,12 +70,18 @@ logs/
 
 # Migration files temp
 Migrations/
+!Migrations/
+Migrations/*
+!Migrations/20261013150423_AddModuloTPV.cs
+!Migrations/20261013150423_AddModuloTPV.Designer.cs
+!Migrations/ApplicationDbContextModelSnapshot.cs
 
 # appsettings personalizados
 appsettings.Development.json
 
 # Backups de base de datos
 *.sql
+!Database/AddModuloTPV.sql
 
 # Archivos de publicación IIS
 factiox_iis_*.zip

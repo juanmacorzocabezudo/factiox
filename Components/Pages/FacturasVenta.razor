@@ -17,6 +17,7 @@
 @inject IAuthService AuthService
 @inject IExcelExportService ExcelExportService
 @inject IEmpresaService EmpresaService
+@inject ITpvService TpvService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
@@ -193,6 +194,10 @@
                                         @if (factura.EsAbono && !string.IsNullOrWhiteSpace(factura.NumeroFacturaOriginal))
                                         {
                                             <small class="d-block text-muted">Rectifica: @factura.NumeroFacturaOriginal</small>
+                                        }
+                                        @if (ticketsPorFactura.TryGetValue(factura.Id, out var ticketsOrigen))
+                                        {
+                                            <small class="d-block text-muted"><i class="bi bi-shop"></i> TPV – Ticket Nº @ticketsOrigen</small>
                                         }
                                     </td>
                                     @if (AuthService.Rol == Roles.Asesoria)
@@ -1580,6 +1585,8 @@
 }
 
 @code {
+    private Dictionary<int, string> ticketsPorFactura = new();
+
     [SupplyParameterFromQuery(Name = "rectificar")]
     public int? FacturaARectificar { get; set; }
     private int? facturaRectificadaCargada;
@@ -1745,7 +1752,9 @@
     protected override async Task OnInitializedAsync()
     {
         await CargarFacturas();
-        clientes = await ClienteService.ObtenerTodosAsync();
+        clientes = AuthService.Rol == Roles.Asesoria
+            ? await ClienteService.ObtenerPorEmpresasAsync(AuthService.EmpresaIds)
+            : await ClienteService.ObtenerTodosAsync();
         productos = await ProductoService.ObtenerActivosAsync();
         
         // Cargar empresas asociadas si es Asesoría
@@ -1843,6 +1852,7 @@
             .Where(f => f.TipoFactura == TipoFactura.Venta && !f.EsAbono && f.EmpresaId == AuthService.EmpresaId)
             .OrderByDescending(f => f.FechaEmision).ToList();
         modoAbonosCargado = EsPaginaAbonos;
+        ticketsPorFactura = await TpvService.ObtenerTicketsPorFacturaAsync(facturas.Select(f => f.Id));
         
         if (facturas != null && facturas.Any())
         {

@@ -50,9 +50,10 @@ public class FacturaService : IFacturaService
             .AsQueryable();
         
         // SuperAdmin ve todos, otros solo ven los de su empresa
-        if (!isSuperAdmin && empresaId.HasValue)
+        // Sin empresa en sesión (p. ej. durante el prerenderizado) no se devuelve nada
+        if (!isSuperAdmin)
         {
-            query = query.Where(f => f.EmpresaId == empresaId.Value);
+            query = query.Where(f => f.EmpresaId == empresaId);
         }
         
         return await query.OrderByDescending(f => f.FechaEmision).ToListAsync();
@@ -113,7 +114,7 @@ public class FacturaService : IFacturaService
             .FirstOrDefaultAsync(f => f.Id == id);
         
         // Verificar que la factura pertenece a la empresa del usuario
-        if (factura != null && !isSuperAdmin && empresaId.HasValue && factura.EmpresaId != empresaId)
+        if (factura != null && !isSuperAdmin && factura.EmpresaId != empresaId)
         {
             return null;
         }
@@ -348,67 +349,45 @@ public class FacturaService : IFacturaService
         if (claseFactura == ClaseFactura.Rectificativa)
             return await GenerarNumeroAbonoAsync(tipoFactura);
 
+        var empresaId = await _tenantService.GetEmpresaIdAsync()
+            ?? throw new InvalidOperationException("No se puede generar número de factura sin empresa asignada");
+
         using var context = await _contextFactory.CreateDbContextAsync();
-        var empresaId = await _tenantService.GetEmpresaIdAsync();
-        
-        if (!empresaId.HasValue)
+        await using var transaccion = await context.Database.BeginTransactionAsync();
+        // El bloqueo evita que dos usuarios obtengan el mismo número a la vez
+        var configuraciones = await context.ConfiguracionEmpresa
+            .FromSqlInterpolated($"SELECT * FROM ConfiguracionEmpresa WHERE EmpresaId = {empresaId} FOR UPDATE")
+            .ToListAsync();
+        var config = configuraciones.SingleOrDefault()
+            ?? throw new InvalidOperationException("No se encontró la configuración de la empresa");
+
+        var esCompra = tipoFactura == TipoFactura.Compra;
+        var serie = esCompra ? config.SerieFacturaCompra : config.SerieFactura;
+        var longitud = esCompra ? config.LongitudNumeroFacturaCompra : config.LongitudNumeroFactura;
+        var incluirAnio = esCompra ? config.IncluirAñoEnSerieCompra : config.IncluirAñoEnSerie;
+        var siguienteNumero = esCompra ? config.NumeroFacturaCompraActual : config.NumeroFacturaActual;
+
+        string Formatear(int numero)
         {
-            throw new InvalidOperationException("No se puede generar número de factura sin empresa asignada");
+            var numeroFormateado = numero.ToString($"D{longitud}");
+            return incluirAnio ? $"{serie}-{DateTime.Now.Year}-{numeroFormateado}" : $"{serie}-{numeroFormateado}";
         }
 
-        // Obtener la configuración de la empresa
-        var config = await _configuracionService.ObtenerPorEmpresaIdAsync(empresaId.Value);
-        if (config == null)
+        // Si el contador está desfasado respecto a las facturas existentes, se salta los números ya usados
+        string resultado;
+        do
         {
-            throw new InvalidOperationException("No se encontró la configuración de la empresa");
+            siguienteNumero = checked(siguienteNumero + 1);
+            resultado = Formatear(siguienteNumero);
         }
+        while (await context.Facturas.AnyAsync(f => f.EmpresaId == empresaId && f.NumeroFactura == resultado));
 
-        string serie;
-        int numeroActual;
-        int longitud;
-        bool incluirAnio;
+        if (esCompra) config.NumeroFacturaCompraActual = siguienteNumero;
+        else config.NumeroFacturaActual = siguienteNumero;
 
-        // Seleccionar la configuración según el tipo de factura
-        if (tipoFactura == TipoFactura.Compra)
-        {
-            serie = config.SerieFacturaCompra;
-            numeroActual = config.NumeroFacturaCompraActual;
-            longitud = config.LongitudNumeroFacturaCompra;
-            incluirAnio = config.IncluirAñoEnSerieCompra;
-        }
-        else // TipoFactura.Venta
-        {
-            serie = config.SerieFactura;
-            numeroActual = config.NumeroFacturaActual;
-            longitud = config.LongitudNumeroFactura;
-            incluirAnio = config.IncluirAñoEnSerie;
-        }
-
-        // Incrementar el número
-        int siguienteNumero = numeroActual + 1;
-        string numeroFormateado = siguienteNumero.ToString($"D{longitud}");
-
-        // Actualizar el número en la configuración
-        if (tipoFactura == TipoFactura.Compra)
-        {
-            config.NumeroFacturaCompraActual = siguienteNumero;
-        }
-        else
-        {
-            config.NumeroFacturaActual = siguienteNumero;
-        }
-
-        await _configuracionService.ActualizarAsync(config);
-
-        // Generar el número de factura
-        if (incluirAnio)
-        {
-            return $"{serie}-{DateTime.Now.Year}-{numeroFormateado}";
-        }
-        else
-        {
-            return $"{serie}-{numeroFormateado}";
-        }
+        await context.SaveChangesAsync();
+        await transaccion.CommitAsync();
+        return resultado;
     }
 
     private async Task<string> GenerarNumeroAbonoAsync(TipoFactura tipoFactura)

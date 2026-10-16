@@ -53,7 +53,7 @@
                     <div class="form-check">
                         <InputCheckbox id="recordarme" class="form-check-input" @bind-Value="loginModel.RecordarUsuario" />
                         <label class="form-check-label" for="recordarme">
-                            Recordar credenciales
+                            Recordar usuario
                         </label>
                     </div>
                 </div>
@@ -212,18 +212,13 @@
             {
                 // Intentar cargar el usuario y contraseña guardados
                 var usuarioGuardadoResult = await LocalStorage.GetAsync<string>("usuarioRecordado");
-                var contrasenaGuardadaResult = await LocalStorage.GetAsync<string>("contrasenaRecordada");
+                // Versiones anteriores guardaban la contraseña: se elimina del navegador
+                await LocalStorage.DeleteAsync("contrasenaRecordada");
                 
                 if (usuarioGuardadoResult.Success && !string.IsNullOrEmpty(usuarioGuardadoResult.Value))
                 {
                     loginModel.Usuario = usuarioGuardadoResult.Value;
                     loginModel.RecordarUsuario = true;
-                    
-                    if (contrasenaGuardadaResult.Success && !string.IsNullOrEmpty(contrasenaGuardadaResult.Value))
-                    {
-                        loginModel.Contrasena = contrasenaGuardadaResult.Value;
-                    }
-                    
                     StateHasChanged();
                 }
             }
@@ -250,12 +245,10 @@
                 if (loginModel.RecordarUsuario)
                 {
                     await LocalStorage.SetAsync("usuarioRecordado", loginModel.Usuario);
-                    await LocalStorage.SetAsync("contrasenaRecordada", loginModel.Contrasena);
                 }
                 else
                 {
                     await LocalStorage.DeleteAsync("usuarioRecordado");
-                    await LocalStorage.DeleteAsync("contrasenaRecordada");
                 }
 
                 // Esperar un momento para asegurar que SessionStorage se actualice

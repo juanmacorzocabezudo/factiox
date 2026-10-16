@@ -79,8 +79,12 @@ public class ProductoService : IProductoService
     public async Task<Producto?> ObtenerPorIdAsync(int id)
     {
         using var context = await _contextFactory.CreateDbContextAsync();
-        return await context.Productos.FindAsync(id);
+        var producto = await context.Productos.FindAsync(id);
+        return producto != null && await PerteneceAEmpresaAsync(producto) ? producto : null;
     }
+
+    private async Task<bool> PerteneceAEmpresaAsync(Producto producto) =>
+        await _tenantService.IsSuperAdminAsync() || producto.EmpresaId == await _tenantService.GetEmpresaIdAsync();
 
     public async Task<Producto> CrearAsync(Producto producto)
     {
@@ -100,6 +104,7 @@ public class ProductoService : IProductoService
         
         producto.FechaCreacion = DateTime.Now;
         producto.FechaUltimaActualizacion = DateTime.Now;
+        await ValidarCodigoBarrasUnicoAsync(context, producto.EmpresaId, producto.CodigoBarras, 0);
         
         context.Productos.Add(producto);
         await context.SaveChangesAsync();
@@ -113,11 +118,13 @@ public class ProductoService : IProductoService
         using var context = await _contextFactory.CreateDbContextAsync();
         
         var existente = await context.Productos.FindAsync(id);
-        if (existente == null)
+        if (existente == null || !await PerteneceAEmpresaAsync(existente))
         {
             Console.WriteLine($"ProductoService - Producto con ID {id} no encontrado");
             return null;
         }
+
+        await ValidarCodigoBarrasUnicoAsync(context, existente.EmpresaId, producto.CodigoBarras, id);
 
         // Actualizar todos los campos
         existente.Nombre = producto.Nombre;
@@ -150,12 +157,20 @@ public class ProductoService : IProductoService
         return existente;
     }
 
+    private static async Task ValidarCodigoBarrasUnicoAsync(ApplicationDbContext context, int empresaId, string? codigoBarras, int productoId)
+    {
+        if (string.IsNullOrWhiteSpace(codigoBarras)) return;
+        var codigo = codigoBarras.Trim();
+        if (await context.Productos.AnyAsync(p => p.EmpresaId == empresaId && p.Id != productoId && p.CodigoBarras == codigo))
+            throw new InvalidOperationException($"Ya existe otro producto con el código de barras {codigo}.");
+    }
+
     public async Task<bool> EliminarAsync(int id)
     {
         using var context = await _contextFactory.CreateDbContextAsync();
         
         var producto = await context.Productos.FindAsync(id);
-        if (producto == null)
+        if (producto == null || !await PerteneceAEmpresaAsync(producto))
         {
             Console.WriteLine($"ProductoService - Producto con ID {id} no encontrado");
             return false;

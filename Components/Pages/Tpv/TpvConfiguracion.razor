@@ -1,0 +1,232 @@
+@page "/tpv/configuracion"
+@using FactioX.Models
+@using FactioX.Services
+@inherits TpvPaginaBase
+@rendermode InteractiveServer
+
+<PageTitle>Configuración TPV - FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <h2 class="mb-0"><i class="bi bi-sliders"></i> Configuración TPV</h2>
+        <a href="tpv" class="btn btn-success ms-auto"><i class="bi bi-cart-fill"></i> Ir a venta</a>
+    </div>
+
+    @if (!Cargado)
+    {
+        <div class="spinner-border text-success"></div>
+    }
+    else if (ErrorCarga != null)
+    {
+        <div class="alert alert-danger">@ErrorCarga</div>
+    }
+    else
+    {
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Terminales</h5>
+                        <button class="btn btn-sm btn-success" @onclick="NuevoTerminal"><i class="bi bi-plus-circle"></i> Nuevo terminal</button>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead><tr><th>Código</th><th>Nombre</th><th>Serie propia</th><th>Cliente genérico</th><th>Impresora</th><th>Estado</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var t in terminales)
+                                {
+                                    <tr>
+                                        <td><strong>@t.Codigo</strong></td>
+                                        <td>@t.Nombre</td>
+                                        <td>@(string.IsNullOrWhiteSpace(t.SerieTicket) ? "General" : $"{t.SerieTicket} ({t.NumeroTicketActual})")</td>
+                                        <td>@NombreCliente(clientes.FirstOrDefault(c => c.Id == t.ClienteGenericoId))</td>
+                                        <td>@t.ImpresoraAnchoMm mm</td>
+                                        <td><span class="badge @(t.Activo ? "bg-success" : "bg-secondary")">@(t.Activo ? "Activo" : "Inactivo")</span></td>
+                                        <td class="text-end"><button class="btn btn-sm btn-outline-primary" @onclick="() => EditarTerminal(t)"><i class="bi bi-pencil"></i></button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        @if (!terminales.Any())
+                        {
+                            <p class="text-muted p-3 mb-0">Cree al menos un terminal para empezar a vender.</p>
+                        }
+                    </div>
+                </div>
+
+                @if (terminalEditando != null)
+                {
+                    <div class="card mt-3 border-success">
+                        <div class="card-header"><h5 class="mb-0">@(terminalEditando.Id == 0 ? "Nuevo terminal" : $"Editar {terminalEditando.Codigo}")</h5></div>
+                        <div class="card-body row g-2">
+                            <div class="col-md-2">
+                                <label class="form-label">Código *</label>
+                                <input class="form-control" maxlength="20" @bind="terminalEditando.Codigo" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Nombre *</label>
+                                <input class="form-control" maxlength="100" @bind="terminalEditando.Nombre" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Serie propia (opcional)</label>
+                                <input class="form-control" maxlength="10" @bind="terminalEditando.SerieTicket" />
+                                <div class="form-text">Dejar vacío para usar la serie general.</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Impresora</label>
+                                <select class="form-select" @bind="terminalEditando.ImpresoraAnchoMm">
+                                    <option value="80">80 mm</option>
+                                    <option value="58">58 mm</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Cliente genérico (contado)</label>
+                                <select class="form-select" @bind="clienteGenericoId">
+                                    <option value="0">Sin cliente</option>
+                                    @foreach (var c in clientes)
+                                    {
+                                        <option value="@c.Id">@NombreCliente(c) (@c.NIF)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Forma de pago por defecto</label>
+                                <select class="form-select" @bind="formaPagoPorDefectoId">
+                                    <option value="0">Efectivo (automático)</option>
+                                    @foreach (var f in formasPago)
+                                    {
+                                        <option value="@f.Id">@f.Nombre</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-12 form-check form-switch ms-2">
+                                <input class="form-check-input" type="checkbox" id="terminalActivo" @bind="terminalEditando.Activo" />
+                                <label class="form-check-label" for="terminalActivo">Activo</label>
+                            </div>
+                            <div class="col-12 d-flex gap-2 justify-content-end">
+                                <button class="btn btn-secondary" @onclick="() => terminalEditando = null">Cancelar</button>
+                                <button class="btn btn-success" @onclick="GuardarTerminal"><i class="bi bi-save"></i> Guardar</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="col-lg-5">
+                @if (config != null)
+                {
+                    <div class="card">
+                        <div class="card-header"><h5 class="mb-0">Series y opciones</h5></div>
+                        <div class="card-body">
+                            <h6>Tickets (factura simplificada)</h6>
+                            <div class="row g-2 mb-3">
+                                <div class="col-4"><label class="form-label small">Serie</label><input class="form-control" maxlength="10" @bind="config.SerieTicket" /></div>
+                                <div class="col-4"><label class="form-label small">Dígitos</label><input type="number" min="3" max="8" class="form-control" @bind="config.LongitudNumeroTicket" /></div>
+                                <div class="col-4"><label class="form-label small">Último nº</label><input class="form-control" readonly value="@config.NumeroTicketActual" /></div>
+                                <div class="col-12 form-check ms-2">
+                                    <input class="form-check-input" type="checkbox" id="anioTicket" @bind="config.IncluirAnioEnSerieTicket" />
+                                    <label class="form-check-label" for="anioTicket">Incluir año (@Ejemplo(config.SerieTicket, config.IncluirAnioEnSerieTicket, config.LongitudNumeroTicket))</label>
+                                </div>
+                            </div>
+                            <h6>Devoluciones</h6>
+                            <div class="row g-2 mb-3">
+                                <div class="col-4"><label class="form-label small">Serie</label><input class="form-control" maxlength="10" @bind="config.SerieDevolucionTicket" /></div>
+                                <div class="col-4"><label class="form-label small">Dígitos</label><input type="number" min="3" max="8" class="form-control" @bind="config.LongitudNumeroDevolucionTicket" /></div>
+                                <div class="col-4"><label class="form-label small">Último nº</label><input class="form-control" readonly value="@config.NumeroDevolucionTicketActual" /></div>
+                                <div class="col-12 form-check ms-2">
+                                    <input class="form-check-input" type="checkbox" id="anioDevolucion" @bind="config.IncluirAnioEnSerieDevolucionTicket" />
+                                    <label class="form-check-label" for="anioDevolucion">Incluir año (@Ejemplo(config.SerieDevolucionTicket, config.IncluirAnioEnSerieDevolucionTicket, config.LongitudNumeroDevolucionTicket))</label>
+                                </div>
+                            </div>
+                            <h6>Stock</h6>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="descontarStock" @bind="config.TpvDescontarStock" />
+                                <label class="form-check-label" for="descontarStock">Descontar stock al cobrar y reponerlo en devoluciones</label>
+                            </div>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="stockNegativo" @bind="config.TpvPermitirStockNegativo" />
+                                <label class="form-check-label" for="stockNegativo">Permitir vender sin stock suficiente</label>
+                            </div>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="preciosIncluyenIva" @bind="config.TpvPreciosIncluyenIVA" />
+                                <label class="form-check-label" for="preciosIncluyenIva">Mostrar e introducir precios con IVA incluido</label>
+                            </div>
+                            <label class="form-label">Texto al pie del ticket</label>
+                            <textarea class="form-control mb-3" rows="3" maxlength="500" @bind="config.TpvTextoPieTicket" placeholder="Gracias por su compra"></textarea>
+                            <div class="small text-muted mb-2">Los contadores solo avanzan al cobrar para mantener la numeración correlativa sin huecos. La serie no se puede cambiar una vez emitidos tickets.</div>
+                            <button class="btn btn-success w-100" @onclick="GuardarConfiguracion"><i class="bi bi-save"></i> Guardar configuración</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    protected override bool RequiereAdministrador => true;
+
+    private List<TpvTerminal> terminales = new();
+    private List<Cliente> clientes = new();
+    private List<FormaPagoPersonalizada> formasPago = new();
+    private ConfiguracionEmpresa? config;
+    private TpvTerminal? terminalEditando;
+    private int clienteGenericoId;
+    private int formaPagoPorDefectoId;
+
+    protected override async Task CargarAsync()
+    {
+        terminales = await TpvService.ObtenerTerminalesAsync(soloActivos: false);
+        clientes = await TpvService.ObtenerClientesAsync();
+        formasPago = await TpvService.ObtenerFormasPagoAsync();
+        config = await TpvService.ObtenerConfiguracionAsync();
+    }
+
+    private static string Ejemplo(string serie, bool anio, int longitud) =>
+        anio ? $"{serie}-{DateTime.Today.Year}-{1.ToString($"D{Math.Clamp(longitud, 1, 8)}")}" : $"{serie}-{1.ToString($"D{Math.Clamp(longitud, 1, 8)}")}";
+
+    private void NuevoTerminal()
+    {
+        terminalEditando = new TpvTerminal { Codigo = $"CAJA{terminales.Count + 1}", Nombre = $"Caja {terminales.Count + 1}", Activo = true };
+        clienteGenericoId = 0;
+        formaPagoPorDefectoId = 0;
+    }
+
+    private void EditarTerminal(TpvTerminal terminal)
+    {
+        terminalEditando = new TpvTerminal
+        {
+            Id = terminal.Id,
+            Codigo = terminal.Codigo,
+            Nombre = terminal.Nombre,
+            Activo = terminal.Activo,
+            SerieTicket = terminal.SerieTicket,
+            NumeroTicketActual = terminal.NumeroTicketActual,
+            ImpresoraAnchoMm = terminal.ImpresoraAnchoMm
+        };
+        clienteGenericoId = terminal.ClienteGenericoId ?? 0;
+        formaPagoPorDefectoId = terminal.FormaPagoPorDefectoId ?? 0;
+    }
+
+    private async Task GuardarTerminal()
+    {
+        if (terminalEditando == null) return;
+        terminalEditando.ClienteGenericoId = clienteGenericoId == 0 ? null : clienteGenericoId;
+        terminalEditando.FormaPagoPorDefectoId = formaPagoPorDefectoId == 0 ? null : formaPagoPorDefectoId;
+        if (await EjecutarAsync(() => TpvService.GuardarTerminalAsync(terminalEditando)))
+        {
+            terminalEditando = null;
+            terminales = await TpvService.ObtenerTerminalesAsync(soloActivos: false);
+        }
+    }
+
+    private async Task GuardarConfiguracion()
+    {
+        if (config == null) return;
+        if (await EjecutarAsync(() => TpvService.GuardarConfiguracionAsync(config)))
+        {
+            config = await TpvService.ObtenerConfiguracionAsync();
+            await JS.InvokeVoidAsync("alert", "Configuración guardada.");
+        }
+    }
+}

@@ -4,6 +4,7 @@
 @using FactioX.Services
 @inject IProductoService ProductoService
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
 <PageTitle>FactioX</PageTitle>
@@ -101,13 +102,17 @@
 
     private async Task GuardarProducto()
     {
-        if (Id.HasValue)
+        try
         {
-            await ProductoService.ActualizarAsync(Id.Value, producto);
+            if (Id.HasValue)
+                await ProductoService.ActualizarAsync(Id.Value, producto);
+            else
+                await ProductoService.CrearAsync(producto);
         }
-        else
+        catch (InvalidOperationException ex)
         {
-            await ProductoService.CrearAsync(producto);
+            await JSRuntime.InvokeVoidAsync("alert", ex.Message);
+            return;
         }
         
         Navigation.NavigateTo("/productos");

@@ -8,6 +8,8 @@ public interface ITenantService
     Task<int?> GetEmpresaIdAsync();
     Task SetEmpresaIdAsync(int empresaId);
     Task<bool> IsSuperAdminAsync();
+    Task<string?> GetRolAsync();
+    Task<int?> GetUsuarioIdAsync();
     Task ClearEmpresaIdAsync();
 }
 
@@ -70,6 +72,32 @@ public class TenantService : ITenantService
         }
 
         return false;
+    }
+
+    public async Task<string?> GetRolAsync()
+    {
+        try
+        {
+            var result = await _sessionStorage.GetAsync<string>("userRole");
+            return result.Success ? result.Value : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<int?> GetUsuarioIdAsync()
+    {
+        try
+        {
+            var result = await _sessionStorage.GetAsync<int>("userId");
+            return result.Success ? result.Value : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public async Task ClearEmpresaIdAsync()

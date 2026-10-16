@@ -24,6 +24,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<PagoFactura> PagosFactura { get; set; }
     public DbSet<FormaPagoPersonalizada> FormasPagoPersonalizadas { get; set; }
     public DbSet<Gasto> Gastos { get; set; }
+    public DbSet<EmpresaModulo> EmpresaModulos { get; set; }
+    public DbSet<TpvTerminal> TpvTerminales { get; set; }
+    public DbSet<TpvSesionCaja> TpvSesionesCaja { get; set; }
+    public DbSet<TpvMovimientoCaja> TpvMovimientosCaja { get; set; }
+    public DbSet<TicketTpv> TicketsTpv { get; set; }
+    public DbSet<PagoTicketTpv> PagosTicketTpv { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -124,6 +130,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.SerieAbonoVenta).HasMaxLength(10).IsRequired();
             entity.Property(e => e.SerieAbonoCompra).HasMaxLength(10).IsRequired();
             entity.Property(e => e.SeriePresupuesto).HasMaxLength(10);
+            entity.Property(e => e.SerieTicket).HasMaxLength(10).IsRequired();
+            entity.Property(e => e.SerieDevolucionTicket).HasMaxLength(10).IsRequired();
+            entity.Property(e => e.TpvTextoPieTicket).HasMaxLength(500);
             
             // Convertir enums a strings para la base de datos
             entity.Property(e => e.TipoPersona)
@@ -319,6 +328,11 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(l => l.PresupuestoId)
                 .OnDelete(DeleteBehavior.Cascade);
             
+            entity.HasOne(l => l.TicketTpv)
+                .WithMany(t => t.Lineas)
+                .HasForeignKey(l => l.TicketTpvId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             entity.HasOne(l => l.Producto)
                 .WithMany()
                 .HasForeignKey(l => l.ProductoId)
@@ -391,6 +405,85 @@ public class ApplicationDbContext : DbContext
             
             // Índice para búsquedas por empresa y fecha
             entity.HasIndex(g => new { g.EmpresaId, g.Fecha });
+        });
+
+        modelBuilder.Entity<EmpresaModulo>(entity =>
+        {
+            entity.ToTable("EmpresaModulos");
+            entity.Property(e => e.Modulo).HasConversion<string>().HasMaxLength(30);
+            entity.HasIndex(e => new { e.EmpresaId, e.Modulo }).IsUnique();
+            entity.HasOne(e => e.Empresa).WithMany().HasForeignKey(e => e.EmpresaId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TpvTerminal>(entity =>
+        {
+            entity.ToTable("TpvTerminales");
+            entity.Property(e => e.Nombre).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Codigo).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.SerieTicket).HasMaxLength(10);
+            entity.HasIndex(e => new { e.EmpresaId, e.Codigo }).IsUnique();
+            entity.HasOne(e => e.Empresa).WithMany().HasForeignKey(e => e.EmpresaId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ClienteGenerico).WithMany().HasForeignKey(e => e.ClienteGenericoId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.FormaPagoPorDefecto).WithMany().HasForeignKey(e => e.FormaPagoPorDefectoId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<TpvSesionCaja>(entity =>
+        {
+            entity.ToTable("TpvSesionesCaja");
+            entity.Property(e => e.Estado).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.FondoInicial).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.EfectivoContado).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.EfectivoEsperado).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Descuadre).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Observaciones).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.TerminalId, e.Estado });
+            entity.HasOne(e => e.Terminal).WithMany().HasForeignKey(e => e.TerminalId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Empresa).WithMany().HasForeignKey(e => e.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TpvMovimientoCaja>(entity =>
+        {
+            entity.ToTable("TpvMovimientosCaja");
+            entity.Property(e => e.Tipo).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.Importe).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Concepto).HasMaxLength(200).IsRequired();
+            entity.HasOne(e => e.SesionCaja).WithMany(s => s.Movimientos).HasForeignKey(e => e.SesionCajaId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TicketTpv>(entity =>
+        {
+            entity.ToTable("TicketsTpv");
+            entity.Property(e => e.Numero).HasMaxLength(50);
+            entity.Property(e => e.Estado).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.TipoTicket).HasConversion<string>().HasMaxLength(20);
+            entity.Property(e => e.DescuentoGlobal).HasColumnType("decimal(5,2)");
+            entity.Property(e => e.BaseImponible).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.TotalIVA).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Total).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Entregado).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Cambio).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Notas).HasMaxLength(500);
+            entity.Property(e => e.Huella).HasMaxLength(64);
+            entity.HasIndex(e => new { e.EmpresaId, e.Numero }).IsUnique();
+            entity.HasIndex(e => new { e.EmpresaId, e.Estado });
+            entity.HasIndex(e => new { e.EmpresaId, e.Fecha });
+            entity.HasOne(e => e.Empresa).WithMany().HasForeignKey(e => e.EmpresaId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Terminal).WithMany().HasForeignKey(e => e.TerminalId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.SesionCaja).WithMany().HasForeignKey(e => e.SesionCajaId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Usuario).WithMany().HasForeignKey(e => e.UsuarioId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Cliente).WithMany().HasForeignKey(e => e.ClienteId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.TicketOriginal).WithMany().HasForeignKey(e => e.TicketOriginalId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.PresupuestoOrigen).WithMany().HasForeignKey(e => e.PresupuestoOrigenId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Factura).WithMany().HasForeignKey(e => e.FacturaId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PagoTicketTpv>(entity =>
+        {
+            entity.ToTable("PagosTicketTpv");
+            entity.Property(e => e.Importe).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Referencia).HasMaxLength(100);
+            entity.HasOne(e => e.TicketTpv).WithMany(t => t.Pagos).HasForeignKey(e => e.TicketTpvId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.FormaPagoPersonalizada).WithMany().HasForeignKey(e => e.FormaPagoPersonalizadaId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

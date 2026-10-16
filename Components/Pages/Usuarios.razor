@@ -34,7 +34,6 @@
                                 <th>Estado</th>
                                 @if (AuthService.Rol == Roles.SuperAdministrador)
                                 {
-                                    <th>Contraseña</th>
                                     <th>Caducidad</th>
                                 }
                                 <th>Fecha Creación</th>
@@ -71,21 +70,6 @@
                                     </td>
                                     @if (AuthService.Rol == Roles.SuperAdministrador)
                                     {
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <code class="d-inline-block" style="font-weight: bold; color: #198754;">
-                                                    @(string.IsNullOrEmpty(usuario.PasswordTextoPlano) ? "N/A" : usuario.PasswordTextoPlano)
-                                                </code>
-                                                @if (!string.IsNullOrEmpty(usuario.PasswordTextoPlano))
-                                                {
-                                                    <button class="btn btn-sm btn-outline-success" 
-                                                            @onclick="() => CopiarAlPortapapeles(usuario.PasswordTextoPlano)" 
-                                                            title="Copiar contraseña">
-                                                        <i class="bi bi-clipboard"></i>
-                                                    </button>
-                                                }
-                                            </div>
-                                        </td>
                                         <td>
                                             @if (usuario.EsAccesoPrueba && usuario.FechaCaducidad.HasValue)
                                             {
@@ -189,19 +173,8 @@
                                     <div class="alert alert-info">
                                         <small>Deja los campos de contraseña vacíos si no deseas cambiarla</small>
                                     </div>
-                                    @if (AuthService.Rol == Roles.SuperAdministrador)
-                                    {
-                                        <div class="mb-3">
-                                            <label class="form-label">Contraseña Actual (Texto Plano)</label>
-                                            <div class="input-group mb-2">
-                                                <input type="text" class="form-control" value="@(usuarioEditando.PasswordTextoPlano ?? "No disponible")" readonly style="font-family: monospace; font-size: 1rem; font-weight: bold; color: #198754;" />
-                                                @if (!string.IsNullOrEmpty(usuarioEditando.PasswordTextoPlano))
-                                                {
-                                                    <button class="btn btn-outline-success" type="button" @onclick="() => CopiarAlPortapapeles(usuarioEditando.PasswordTextoPlano)" title="Copiar contraseña">
-                                                        <i class="bi bi-clipboard"></i> Copiar
-                                                    </button>
-                                                }
-                                            </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Restablecer contraseña</label>
                                             <div class="d-flex gap-2 align-items-start mb-2">
                                                 <button class="btn btn-sm btn-warning" type="button" @onclick="ResetearPassword">
                                                     <i class="bi bi-key"></i> Generar Nueva Contraseña
@@ -221,9 +194,8 @@
                                                     </div>
                                                 }
                                             </div>
-                                            <small class="text-muted">Hash: <code style="font-size: 0.65rem;">@(usuarioEditando.Password?.Substring(0, Math.Min(40, usuarioEditando.Password.Length)))...</code></small>
+                                            <small class="text-muted">Las contraseñas se guardan cifradas y no pueden consultarse. La nueva contraseña solo se muestra una vez.</small>
                                         </div>
-                                    }
                                     <div class="row">
                                         <div class="col-md-6 mb-3">
                                             <label class="form-label">Nueva Contraseña (opcional)</label>
@@ -440,6 +412,14 @@
         await CargarDatos();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await AuthService.InicializarAsync();
+        if (AuthService.Rol is not (Roles.SuperAdministrador or Roles.Administrador))
+            Navigation.NavigateTo(AuthService.EstaAutenticado ? "/" : "/login");
+    }
+
     private async Task CargarDatos()
     {
         usuarios = await UsuarioService.ObtenerTodosAsync();
@@ -486,7 +466,6 @@
                 Id = usuario.Id,
                 Username = usuario.Username,
                 Password = usuario.Password,
-                PasswordTextoPlano = usuario.PasswordTextoPlano,
                 NombreCompleto = usuario.NombreCompleto,
                 Email = usuario.Email,
                 Rol = usuario.Rol,
@@ -601,18 +580,22 @@
         }
 
         int usuarioId;
-        if (usuarioEditando.Id == 0)
+        try
         {
-            await UsuarioService.CrearAsync(usuarioEditando);
-            // Obtener el ID del usuario recién creado
-            var usuariosActualizados = await UsuarioService.ObtenerTodosAsync();
-            var nuevoUsuario = usuariosActualizados.FirstOrDefault(u => u.Username == usuarioEditando.Username);
-            usuarioId = nuevoUsuario?.Id ?? 0;
+            if (usuarioEditando.Id == 0)
+            {
+                usuarioId = (await UsuarioService.CrearAsync(usuarioEditando)).Id;
+            }
+            else
+            {
+                usuarioId = usuarioEditando.Id;
+                await UsuarioService.ActualizarAsync(usuarioEditando.Id, usuarioEditando);
+            }
         }
-        else
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
         {
-            usuarioId = usuarioEditando.Id;
-            await UsuarioService.ActualizarAsync(usuarioEditando.Id, usuarioEditando);
+            await JSRuntime.InvokeVoidAsync("alert", ex.Message);
+            return;
         }
 
         // Gestionar asociaciones de empresa si es Asesoría
@@ -659,7 +642,14 @@
         var confirmado = await JSRuntime.InvokeAsync<bool>("confirm", "¿Está seguro de que desea eliminar este usuario?");
         if (confirmado)
         {
-            await UsuarioService.EliminarAsync(id);
+            try
+            {
+                await UsuarioService.EliminarAsync(id);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", ex.Message);
+            }
             await CargarDatos();
         }
     }

@@ -1,0 +1,276 @@
+@page "/tpv/caja"
+@using FactioX.Models
+@using FactioX.Services
+@inherits TpvPaginaBase
+@rendermode InteractiveServer
+
+<PageTitle>Caja TPV - FactioX</PageTitle>
+
+<div class="container-fluid">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <h2 class="mb-0"><i class="bi bi-cash-coin"></i> Caja TPV</h2>
+        @if (terminales.Any())
+        {
+            <select class="form-select w-auto ms-md-3" value="@terminalId" @onchange="CambiarTerminal">
+                @foreach (var t in terminales)
+                {
+                    <option value="@t.Id">@t.Codigo - @t.Nombre</option>
+                }
+            </select>
+        }
+        <a href="tpv" class="btn btn-success ms-auto"><i class="bi bi-cart-fill"></i> Ir a venta</a>
+    </div>
+
+    @if (!Cargado)
+    {
+        <div class="spinner-border text-success"></div>
+    }
+    else if (ErrorCarga != null)
+    {
+        <div class="alert alert-danger">@ErrorCarga</div>
+    }
+    else if (!terminales.Any())
+    {
+        <div class="alert alert-warning">No hay terminales configurados.</div>
+    }
+    else
+    {
+        <div class="row g-3">
+            <div class="col-lg-7">
+                @if (sesion == null)
+                {
+                    <div class="card">
+                        <div class="card-header"><h5 class="mb-0">Apertura de caja</h5></div>
+                        <div class="card-body d-flex flex-wrap align-items-end gap-2">
+                            <div>
+                                <label class="form-label">Fondo inicial (€)</label>
+                                <input type="number" step="0.01" min="0" class="form-control" @bind="fondoInicial" />
+                            </div>
+                            <button class="btn btn-success" @onclick="AbrirCaja"><i class="bi bi-unlock"></i> Abrir caja</button>
+                        </div>
+                    </div>
+                }
+                else if (informe != null)
+                {
+                    <div class="card mb-3">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Sesión abierta desde @sesion.FechaApertura.ToString("dd/MM/yyyy HH:mm")</h5>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="ImprimirInformeActual"><i class="bi bi-printer"></i> Informe X</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="row text-center g-2">
+                                <div class="col-6 col-md-3"><div class="border rounded p-2"><small class="text-muted d-block">Tickets</small><strong class="fs-5">@informe.NumeroTickets</strong></div></div>
+                                <div class="col-6 col-md-3"><div class="border rounded p-2"><small class="text-muted d-block">Ventas</small><strong class="fs-5">@informe.TotalVentas.ToString("C2")</strong></div></div>
+                                <div class="col-6 col-md-3"><div class="border rounded p-2"><small class="text-muted d-block">Devoluciones</small><strong class="fs-5 text-danger">@informe.TotalDevoluciones.ToString("C2")</strong></div></div>
+                                <div class="col-6 col-md-3"><div class="border rounded p-2"><small class="text-muted d-block">Efectivo esperado</small><strong class="fs-5 text-success">@informe.EfectivoEsperado.ToString("C2")</strong></div></div>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-md-6">
+                                    <h6>Por forma de pago</h6>
+                                    <table class="table table-sm">
+                                        @foreach (var (forma, importe) in informe.PorFormaPago)
+                                        {
+                                            <tr><td>@forma</td><td class="text-end">@importe.ToString("C2")</td></tr>
+                                        }
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Por IVA</h6>
+                                    <table class="table table-sm">
+                                        @foreach (var (tipo, baseIva, cuota) in informe.PorIVA)
+                                        {
+                                            <tr><td>@tipo.ToString("0.##")%</td><td class="text-end">@baseIva.ToString("C2")</td><td class="text-end">@cuota.ToString("C2")</td></tr>
+                                        }
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header"><h5 class="mb-0">Movimientos de efectivo</h5></div>
+                        <div class="card-body">
+                            <div class="row g-2 align-items-end mb-3">
+                                <div class="col-md-3">
+                                    <select class="form-select" @bind="tipoMovimiento">
+                                        <option value="@TipoMovimientoCaja.Entrada">Entrada</option>
+                                        <option value="@TipoMovimientoCaja.Salida">Salida</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" step="0.01" min="0.01" class="form-control" placeholder="Importe" @bind="importeMovimiento" />
+                                </div>
+                                <div class="col-md-4">
+                                    <input class="form-control" maxlength="200" placeholder="Concepto" @bind="conceptoMovimiento" />
+                                </div>
+                                <div class="col-md-2 d-grid">
+                                    <button class="btn btn-primary" @onclick="RegistrarMovimiento">Registrar</button>
+                                </div>
+                            </div>
+                            <table class="table table-sm">
+                                @foreach (var m in informe.Sesion.Movimientos.OrderByDescending(m => m.Fecha))
+                                {
+                                    <tr>
+                                        <td>@m.Fecha.ToString("HH:mm")</td>
+                                        <td><span class="badge @(m.Tipo == TipoMovimientoCaja.Entrada ? "bg-success" : "bg-danger")">@m.Tipo</span></td>
+                                        <td>@m.Concepto</td>
+                                        <td class="text-end">@m.Importe.ToString("C2")</td>
+                                    </tr>
+                                }
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="col-lg-5">
+                @if (sesion != null && informe != null)
+                {
+                    <div class="card border-danger mb-3">
+                        <div class="card-header bg-danger text-white"><h5 class="mb-0">Cierre de caja (arqueo)</h5></div>
+                        <div class="card-body">
+                            <table class="table table-sm align-middle">
+                                @foreach (var d in denominaciones)
+                                {
+                                    <tr>
+                                        <td>@d.Valor.ToString(d.Valor < 1 ? "0.00" : "0") €</td>
+                                        <td style="width: 110px;">
+                                            <input type="number" min="0" step="1" class="form-control form-control-sm" @bind="d.Unidades" @bind:event="oninput" />
+                                        </td>
+                                        <td class="text-end">@((d.Valor * d.Unidades).ToString("C2"))</td>
+                                    </tr>
+                                }
+                            </table>
+                            <div class="d-flex justify-content-between fs-5"><span>Contado</span><strong>@EfectivoContado.ToString("C2")</strong></div>
+                            <div class="d-flex justify-content-between"><span>Esperado</span><span>@informe.EfectivoEsperado.ToString("C2")</span></div>
+                            <div class="d-flex justify-content-between fs-5 @(Descuadre == 0 ? "text-success" : "text-danger")"><span>Descuadre</span><strong>@Descuadre.ToString("C2")</strong></div>
+                            <textarea class="form-control mt-2" rows="2" maxlength="1000" placeholder="Observaciones" @bind="observaciones"></textarea>
+                            <button class="btn btn-danger w-100 mt-2" @onclick="CerrarCaja"><i class="bi bi-lock"></i> Cerrar caja e imprimir Z</button>
+                        </div>
+                    </div>
+                }
+
+                <div class="card">
+                    <div class="card-header"><h5 class="mb-0">Últimas sesiones</h5></div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead><tr><th>Apertura</th><th>Cierre</th><th class="text-end">Descuadre</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var s in historico)
+                                {
+                                    <tr>
+                                        <td>@s.FechaApertura.ToString("dd/MM HH:mm")</td>
+                                        <td>@(s.FechaCierre?.ToString("dd/MM HH:mm") ?? "Abierta")</td>
+                                        <td class="text-end @(s.Descuadre != 0 ? "text-danger" : "")">@(s.Estado == EstadoSesionCaja.Cerrada ? s.Descuadre.ToString("C2") : "-")</td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-outline-secondary" title="Imprimir informe" @onclick="() => ImprimirInforme(s.Id)"><i class="bi bi-printer"></i></button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private class Denominacion
+    {
+        public decimal Valor { get; init; }
+        public int Unidades { get; set; }
+    }
+
+    private List<TpvTerminal> terminales = new();
+    private int terminalId;
+    private TpvSesionCaja? sesion;
+    private InformeCajaTpv? informe;
+    private List<TpvSesionCaja> historico = new();
+    private decimal fondoInicial;
+    private TipoMovimientoCaja tipoMovimiento = TipoMovimientoCaja.Salida;
+    private decimal importeMovimiento;
+    private string conceptoMovimiento = "";
+    private string? observaciones;
+    private List<Denominacion> denominaciones = CrearDenominaciones();
+
+    private decimal EfectivoContado => denominaciones.Sum(d => d.Valor * d.Unidades);
+    private decimal Descuadre => informe == null ? 0 : EfectivoContado - informe.EfectivoEsperado;
+    private int AnchoTicket => terminales.FirstOrDefault(t => t.Id == terminalId)?.ImpresoraAnchoMm ?? 80;
+
+    private static List<Denominacion> CrearDenominaciones() =>
+        new[] { 500m, 200m, 100m, 50m, 20m, 10m, 5m, 2m, 1m, 0.50m, 0.20m, 0.10m, 0.05m, 0.02m, 0.01m }
+            .Select(v => new Denominacion { Valor = v }).ToList();
+
+    protected override async Task CargarAsync()
+    {
+        terminales = await TpvService.ObtenerTerminalesAsync(soloActivos: false);
+        if (!terminales.Any()) return;
+        var guardado = await LeerTerminalGuardadoAsync();
+        terminalId = terminales.Any(t => t.Id == guardado) ? guardado!.Value : terminales[0].Id;
+        await RecargarAsync();
+    }
+
+    private async Task RecargarAsync()
+    {
+        sesion = await TpvService.ObtenerSesionAbiertaAsync(terminalId);
+        informe = sesion != null ? await TpvService.GenerarInformeZAsync(sesion.Id) : null;
+        historico = await TpvService.ObtenerSesionesAsync(terminalId, 20);
+    }
+
+    private async Task CambiarTerminal(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var id)) return;
+        terminalId = id;
+        await GuardarTerminalAsync(id);
+        denominaciones = CrearDenominaciones();
+        await RecargarAsync();
+    }
+
+    private async Task AbrirCaja()
+    {
+        if (await EjecutarAsync(() => TpvService.AbrirCajaAsync(terminalId, fondoInicial)))
+            await RecargarAsync();
+    }
+
+    private async Task RegistrarMovimiento()
+    {
+        if (sesion == null) return;
+        if (await EjecutarAsync(() => TpvService.RegistrarMovimientoAsync(sesion.Id, tipoMovimiento, importeMovimiento, conceptoMovimiento)))
+        {
+            importeMovimiento = 0;
+            conceptoMovimiento = "";
+            await RecargarAsync();
+        }
+    }
+
+    private async Task CerrarCaja()
+    {
+        if (sesion == null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Cerrar la caja con {EfectivoContado:C2} contados (descuadre {Descuadre:C2})?"))
+            return;
+
+        InformeCajaTpv? cierre = null;
+        if (await EjecutarAsync(async () => cierre = await TpvService.CerrarCajaAsync(sesion.Id, EfectivoContado, observaciones)))
+        {
+            var config = await TpvService.ObtenerConfiguracionAsync();
+            await EjecutarAsync(() => ImprimirPdfAsync(TicketPdfService.GenerarInformeZPdf(cierre!, config, AnchoTicket)));
+            denominaciones = CrearDenominaciones();
+            observaciones = null;
+            await RecargarAsync();
+        }
+    }
+
+    private Task ImprimirInformeActual() => sesion == null ? Task.CompletedTask : ImprimirInforme(sesion.Id);
+
+    private async Task ImprimirInforme(int sesionId)
+    {
+        await EjecutarAsync(async () =>
+        {
+            var datos = await TpvService.GenerarInformeZAsync(sesionId);
+            var config = await TpvService.ObtenerConfiguracionAsync();
+            await ImprimirPdfAsync(TicketPdfService.GenerarInformeZPdf(datos, config, AnchoTicket));
+        });
+    }
+}

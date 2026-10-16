@@ -7,6 +7,7 @@ namespace FactioX.Services;
 public interface IClienteService
 {
     Task<List<Cliente>> ObtenerTodosAsync();
+    Task<List<Cliente>> ObtenerPorEmpresasAsync(List<int> empresaIds);
     Task<Cliente?> ObtenerPorIdAsync(int id);
     Task<Cliente> CrearAsync(Cliente cliente);
     Task<Cliente?> ActualizarAsync(int id, Cliente cliente);
@@ -33,12 +34,20 @@ public class ClienteService : IClienteService
         var query = context.Clientes.AsQueryable();
         
         // SuperAdmin ve todos, otros solo ven los de su empresa
-        if (!isSuperAdmin && empresaId.HasValue)
+        // Sin empresa en sesión (p. ej. durante el prerenderizado) no se devuelve nada
+        if (!isSuperAdmin)
         {
-            query = query.Where(c => c.EmpresaId == empresaId.Value);
+            query = query.Where(c => c.EmpresaId == empresaId);
         }
         
         return await query.OrderBy(c => c.Nombre).ToListAsync();
+    }
+
+    public async Task<List<Cliente>> ObtenerPorEmpresasAsync(List<int> empresaIds)
+    {
+        if (empresaIds == null || empresaIds.Count == 0) return new List<Cliente>();
+        using var context = await _contextFactory.CreateDbContextAsync();
+        return await context.Clientes.Where(c => empresaIds.Contains(c.EmpresaId)).OrderBy(c => c.Nombre).ToListAsync();
     }
 
     public async Task<Cliente?> ObtenerPorIdAsync(int id)
